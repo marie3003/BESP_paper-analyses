@@ -1,7 +1,7 @@
 import os, sys, io
 import numpy as np
 from subprocess import call
-from Bio import Phylo, Nexus
+from Bio import Phylo, Nexus, AlignIO
 
 def writeDateTrait(dates,  output):
 
@@ -75,28 +75,40 @@ def makeXMLFile(pars, template, outputfile="", outputpath=""):
 	outfile.close()
 #
 
+def pars_alignment(aln_path, pars):
+    """
+    Read a FASTA alignment and add it to pars["taxa"] in BEAST-compatible XML format.
+    """
+    alignment = AlignIO.read(aln_path, "fasta")
+    output_align = io.StringIO()
 
-def formatPars(pars, tree):
+    for record in alignment:
+        output_align.write(f'\n\t\t<sequence><taxon idref="{record.id}"/>{str(record.seq)}</sequence>')
 
-	# Set inputtree, sampling times and dummy alignment
-	output_align = io.StringIO()
-	output_dates = io.StringIO()
-	output_model = io.StringIO()
+    pars["taxa"] = output_align.getvalue()
 
+def pars_dates(tree, pars):
+    """
+    Add dates to the tree in the BEAST XML parameters.
+    """
+    output_dates = io.StringIO()
 
-	# Add default date direction if not defined
-	if ("dateTrait" not in pars.keys()):
-		pars["dateTrait"] = "date"
-	samplingTimes = getSamplingTimes(tree, forwards=(pars["dateTrait"] != "date-backward"))
-	
-	writeDateTrait(samplingTimes, output_dates)
-	writeAlignment(tree, output_align)
+    tree_ = Phylo.read(io.StringIO(tree), "newick")
+    leaves = tree_.get_terminals()
 
-	pars["tree"]  = tree
-	pars["dates"] = output_dates.getvalue()
-	pars["taxa"]  = output_align.getvalue()
-#
+    # Get homochronous setting from pars (default to False if not present)
+    is_homochronous = pars.get("homochronous", False)
 
+    if is_homochronous:
+        for leaf in leaves:
+            output_dates.write(f'\n\t\t<taxon id = "{leaf.name}"> <date value="0.0" direction="backwards" units="years"/> </taxon>')
+    else:
+        heights = np.array([tree_.distance(leaf) for leaf in leaves])
+        treetimes = np.max(heights) - heights
+        for i, leaf in enumerate(leaves):
+            output_dates.write(f'\n\t\t<taxon id = "{leaf.name}"> <date value="{treetimes[i]}" direction="backwards" units="years"/> </taxon>')
+
+    pars["dates"] = output_dates.getvalue()
 
 def get_beast_call(beast, filename, seed):	
 	return ["java", "-jar", beast, "-seed", str(seed), "-overwrite", filename]

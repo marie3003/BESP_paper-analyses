@@ -8,3 +8,15 @@ __pycache__
 *.RData
 *.state
 *.sh
+.Rproj.user
+
+
+.Rprofile
+BESP_paper-analyses.Rproj
+renv.lock
+renv/
+results/pop_size_simulations/simulation_results/
+results/pop_size_simulations/independent_homochronous/
+results/pop_size_simulations/linear_constant/
+results/test/
+scripts/CreateSamplingTimes.R

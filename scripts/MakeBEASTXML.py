@@ -3,7 +3,6 @@ import numpy as np
 from fnmatch import fnmatch
 from subprocess import call
 from optparse import OptionParser
-from Bio import Phylo, Nexus
 
 from beastutils import *
 
@@ -70,44 +69,63 @@ else:
 ################################################################################################################################  
 
 for filename in sorted(os.listdir(inputpath)):
-	if (fnmatch(filename,config)):
+    if (fnmatch(filename,config)):
 
-		sys.stdout.write(filename+"\t"+config+"\n")
+        sys.stdout.write(filename+"\t"+config+"\n")
 
-		# Load config file
-		configfile = open(inputpath+filename, 'r').read().replace("\t"," ")
-		pars 	   = yaml.load(configfile)
-	
-		# Set BEAST specific parameters	
-		seeds      = list(map(int, options.seed.split(',')))				
-		basename   = pars["name"] if options.name == '' else pars["name"]+"_"+options.name
-		outputpath = os.path.abspath(pars["outputpath"] if options.outputpath == '' else options.outputpath)
-		template   = open(os.path.abspath(pars["template"] if options.template == '' else options.template), 'r').read()
-		treefile   = open(pars["trees"], 'r')
+        # Load config file
+        configfile = open(inputpath+filename, 'r').read().replace("\t"," ")
+        pars 	   = yaml.load(configfile, Loader=yaml.SafeLoader)
 
-		# Output scripts
-		if (not os.path.exists(outputpath)):
-			os.makedirs(outputpath)
-		scriptfile = open(outputpath+"/"+basename+".sh",'w')
+        # Set BEAST specific parameters	
+        seeds      = list(map(int, options.seed.split(',')))				
+        basename   = pars["name"] if options.name == '' else pars["name"]+"_"+options.name
+        outputpath = os.path.abspath(pars["outputpath"] if options.outputpath == '' else options.outputpath)
+        template   = open(os.path.abspath(pars["template"] if options.template == '' else options.template), 'r').read()
+        treefile   = open(pars["trees"], 'r')
 
-		i = 0		
-		for tree in treefile:
-				
-			# Set parameters not in the config file
-			formatPars(pars, tree)
+        # Output scripts
+        if (not os.path.exists(outputpath)):
+            os.makedirs(outputpath)
+        scriptfile = open(outputpath+"/"+basename+".sh",'w')
 
-			# Create XML file			
-			pars["name"] = basename+".T"+str(i)			
-			makeXMLFile(pars, template, outputfile=pars["name"], outputpath=outputpath)
+        i = 0		
+        for tree in treefile:
+            
+            # Save tree to temporary file
+            tree_path = os.path.join(outputpath, f"tmp_tree_{i}.nwk")
+            with open(tree_path, "w") as tf:
+                tf.write(tree.strip() + "\n")
 
-			# Write command to scripts
-			for seed in seeds:
-				cmd ="java -jar -Xms2G -Xmx4G $1 -overwrite -seed %d %s" % (seed, pars["name"]+".xml") 
-				scriptfile.write("%s\n" % (cmd))
+            # Run Seq-Gen to generate alignment
+            aln_path = os.path.join(outputpath, f"aln_{i}.fasta")
+            cmd = f"../../Seq-Gen-1.3.5/source/seq-gen -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l450 -s5e-4 -n1 < {tree_path} > {aln_path}"
+            os.system(cmd)
 
-			i += 1
-		#
-		treefile.close()		
-		scriptfile.close()
-	#
-#
+            # Parse alignment and add to parameters
+            pars_alignment(aln_path, pars)
+
+            pars["tree"]  = tree
+            pars_dates(tree, pars)
+            
+
+            # Create XML file			
+            pars["name"] = basename+".T"+str(i)			
+            makeXMLFile(pars, template, outputfile=pars["name"], outputpath=outputpath)
+
+            # Write command to scripts
+            for seed in seeds:
+                cmd ="java -jar -Xms2G -Xmx4G $1 -overwrite -seed %d %s" % (seed, pars["name"]+".xml") 
+                scriptfile.write("%s\n" % (cmd))
+
+            i += 1
+
+            # Delete temporary files
+            os.remove(aln_path)
+            os.remove(tree_path)
+            
+            
+        treefile.close()		
+        scriptfile.close()
+    #
+    #

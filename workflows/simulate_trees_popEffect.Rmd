@@ -1,0 +1,91 @@
+---
+title: "simulate_trees_popEffect"
+output: html_document
+---
+
+```{r}
+library(phylodyn)
+source("../scripts/SimUtils.R")
+```
+
+
+```{r}
+#' Return trajectory function to investigate effect of population models
+#' 
+#' @param type One of {uniform, expgrowth, boombust, logistic, cyclic, bottleneck}
+get_trajectory_pop <- function(type) {
+  
+    unif_upper       <- 100
+    unif_lower       <- 10
+    exp_scale        <- 500
+    logistic_upper   <- 200
+    logistic_lower   <- 10
+    bottleneck_start <- 10
+    bottleneck_end   <- 20
+    bust_time        <- 2
+  
+    switch(type, 
+          "uniform"    = function(t) unif_traj(t, level=unif_upper),
+          "expgrowth"  = function(t) exp_traj(t, scale=exp_scale),
+          "boombust"   = function(t) boombust_traj(t, bust=bust_time, scale=exp_scale),
+          "logistic"   = function(t) logistic_traj(t, max=logistic_upper),
+          "cyclic"     = function(t) cyclic_traj(t),
+          "bottleneck" = function(t) bottleneck_traj2(t, min=unif_lower, max=unif_upper, start=bottleneck_start, stop=bottleneck_end)
+    )
+}
+```
+
+```{r}
+trajname <- "uniform"
+traj <- get_trajectory_pop(trajname)
+# homochromous sampling --> preferential makes no sense
+# nlimit: population size can't be lower than nlimit to ensure coalescence assumption
+# coalsim takes traj function as input and doesnt need timegrid
+sim <- simulate_genealogy(traj, nrsamples=100, samp_start=0, samp_end=0, samp_type="independent", nlimit=10)
+# gridsize specifies the number of time points saved for the trajectory (timefris)
+# sanitise_times: sets most recent sample to t = 0
+# save simulation fails to save to json if only one tree was generated --> either adapt saving function or run for more than 1 tree
+save_simulation(sim, trajname, path = "../results/test/", gridsize=1000, sanitise_times=TRUE, RData=TRUE, csv=TRUE, newick=TRUE, json=FALSE)
+
+```
+### Notes
+- One needs .trees file to create xml files.
+- code generates 500 tips
+- make sure that names are still unique if only first 10 symbols inputed to seq-gen: labeled t1_... to t500_...
+- clock rate = substitution rate
+- newick format is used as input for seqGen
+
+- use parameters as close to Tuberculosis as possible --> gives huge files, maybe use higher subst. rate and shorter length?:
+./seq-gen -mHKY -t2.07 -f0.17,0.33,0.17,0.33 -l4500000 -s4.6e-8 -n1 < ../../BESP_paper-analyses/results/test/cyclic_test.tree > ../../BESP_paper-analyses/results/test/cyclic_test.dat
+(Time taken: 108.834 seconds)
+
+./seq-gen -mHKY -t2.07 -f0.17,0.33,0.17,0.33 -l450 -s4.6e-4 -n1 < ../../BESP_paper-analyses/results/test/cyclic_test.tree > ../../BESP_paper-analyses/results/test/cyclic_test_small.dat
+
+- reformat .dat file to .fasta file
+cp cyclic_test_small.dat cyclic_test_small.fasta
+cp ../../BESP_paper-analyses/results/test/cyclic_test_small.dat ../../BESP_paper-analyses/results/test/cyclic_test_small.fasta
+
+
+#### Create BEAST xml file
+- use template for fixedtree and fill out parameters
+  - tree
+  - chainlength
+- define config file for my use case (each population model), different to Louis because not supposed to match config file used to simulate tree
+
+- for besp (skyline ...) it uses either equalgroups (splits time into n groups for which population size is estimated) or fixed groups (where the time points between the groups are listed in the config file)
+
+- adapt template xml file to not use skyline model but population models?
+- adapt operators to only vary tree branch length
+- possibly create one xml file for each model to compare
+- adapt beastutils.py to not contain dummy alignment --> also adapt other files
+```{python}
+from Bio import SeqIO
+
+def writeAlignmentFromFasta(fasta_path, output):
+    for record in SeqIO.parse(fasta_path, "fasta"):
+        taxon = record.id
+        sequence = str(record.seq).upper()
+        output.write(f'\n\t\t\t\t\t<sequence spec="Sequence" taxon="{taxon}" value="{sequence}" />')
+```
+
+
