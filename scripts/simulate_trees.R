@@ -1,20 +1,19 @@
 library(phylodyn)
-library(bdskytools)
 
-source("SimUtils.R")
+source("../scripts/SimUtils.R")
 
 # Global settings
 nreplicates <- 3
 samp_start  <- 0
-samp_end    <- 100
+samp_end    <- 50
 nlimit      <- 10
 nrsamples   <- 200
 outputbase  <- "../results/pop_size_simulations/"
 
-trajectories <- data.frame(row.names  =c("expgrowth","uniform","bottleneck"),
-                           names      =c("Exponential growth","Uniform","Bottleneck"),
-                           maxdensity = c(0.4, 0.05, 0.05),
-                           maxlineages = c(300, 100, 100))
+trajectories <- data.frame(row.names  =c("expgrowth","uniform","bottleneck", "cyclic"),
+                           names      =c("Exponential growth","Uniform","Bottleneck", "Cyclical exponential growth"),
+                           maxdensity = c(0.4, 0.05, 0.05, 0.05),
+                           maxlineages = c(300, 100, 100, 100))
 
 # simulate trees with independent homogeneous sampling
 set.seed(9)

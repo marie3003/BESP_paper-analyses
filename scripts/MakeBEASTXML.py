@@ -8,6 +8,7 @@ from beastutils import *
 
 usage = "usage: %prog [option]"
 parser = OptionParser(usage=usage)
+seqGenPath = "../../Seq-Gen-1.3.5/source/seq-gen"  # Path to seq-gen executable, adjust if necessary
 
 parser.add_option("-i","--inputpath",
                   dest = "inputpath",
@@ -99,7 +100,7 @@ for filename in sorted(os.listdir(inputpath)):
 
             # Run Seq-Gen to generate alignment
             aln_path = os.path.join(outputpath, f"aln_{i}.fasta")
-            cmd = f"../../Seq-Gen-1.3.5/source/seq-gen -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l450 -s5e-4 -n1 < {tree_path} > {aln_path}"
+            cmd = f"{seqGenPath} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l450 -s5e-4 -n1 < {tree_path} > {aln_path}"
             os.system(cmd)
 
             # Parse alignment and add to parameters
