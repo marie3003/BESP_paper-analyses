@@ -23,16 +23,6 @@
 	<patterns id="patterns" from="1" strip="false">
 		<alignment idref="alignment"/>
 	</patterns>
-	
-
-	<!-- This is a simple constant population size coalescent model              -->
-	<!-- that is used to generate an initial tree for the chain.                 -->
-	<constantSize id="initialDemo" units="years">
-		<populationSize>
-			<parameter id="initialDemo.popSize" value="{$initialPopSize}"/>
-		</populationSize>
-	</constantSize>
-	
 
 	<!-- Construct a starting tree that is compatible with specified clade heights-->
 	<rescaledTree id="startingTree">
@@ -103,11 +93,6 @@
 			<parameter id="clock.rate" value="{$clockRate}" lower="0.0"/>
 		</rate>
 	</strictClockBranchRates>
-	
-	<rateStatistic id="meanRate" name="meanRate" mode="mean" internal="true" external="true">
-		<treeModel idref="treeModel"/>
-		<strictClockBranchRates idref="branchRates"/>
-	</rateStatistic>
 	
 
 	<!-- The JC substitution model (Jukes & Cantor, 1969)                        -->
@@ -207,7 +192,7 @@
 		</log>
 
 		<!-- write log to file                                                       -->
-		<log id="fileLog" logEvery="{$filelog}" fileName="uniform_0.log" overwrite="false">
+		<log id="fileLog" logEvery="{$filelog}" fileName="{$name}.log" overwrite="false">
 			<joint idref="joint"/>
 			<prior idref="prior"/>
 			<likelihood idref="likelihood"/>
@@ -218,14 +203,13 @@
 			<parameter idref="skygrid.logPopSize"/>
 			<parameter idref="skygrid.cutOff"/>
 			<parameter idref="clock.rate"/>
-			<rateStatistic idref="meanRate"/>
 			<treeDataLikelihood idref="treeLikelihood"/>
 			<strictClockBranchRates idref="branchRates"/>
 			<gmrfSkyGridLikelihood idref="skygrid"/>
 		</log>
 
 		<!-- write tree log to file                                                  -->
-		<logTree id="treeFileLog" logEvery="{$treelog}" nexusFormat="true" fileName="uniform_0.trees" sortTranslationTable="true">
+		<logTree id="treeFileLog" logEvery="{$treelog}" nexusFormat="true" fileName="{$name}.trees" sortTranslationTable="true">
 			<treeModel idref="treeModel"/>
 			<trait name="rate" tag="rate">
 				<strictClockBranchRates idref="branchRates"/>
@@ -234,7 +218,7 @@
 		</logTree>
 
 		<!-- write state of Markov chain to checkpoint file                          -->
-		<logCheckpoint id="checkpointFileLog" checkpointEvery="{$checkpointlog}" checkpointFinal="10000000" fileName="uniform_0.chkpt" overwrite="false"/>
+		<logCheckpoint id="checkpointFileLog" checkpointEvery="{$checkpointlog}" checkpointFinal="10000000" fileName="{$name}.chkpt" overwrite="false"/>
 	</mcmc>
 	
 	<report>

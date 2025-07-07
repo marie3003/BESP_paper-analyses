@@ -13,7 +13,6 @@ __pycache__
 
 .Rprofile
 BESP_paper-analyses.Rproj
-renv.lock
 renv/
 results/pop_size_simulations/simulation_results/
 results/pop_size_simulations/independent_homochronous/

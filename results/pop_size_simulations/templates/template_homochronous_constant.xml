@@ -94,11 +94,6 @@
 		</rate>
 	</strictClockBranchRates>
 	
-	<rateStatistic id="meanRate" name="meanRate" mode="mean" internal="true" external="true">
-		<treeModel idref="treeModel"/>
-		<strictClockBranchRates idref="branchRates"/>
-	</rateStatistic>
-	
 
 	<!-- The JC substitution model (Jukes & Cantor, 1969)                        -->
 	<HKYModel id="jc">
@@ -159,7 +154,7 @@
 				<uniformPrior lower="0.0" upper="1.0E100">
 					<parameter idref="clock.rate"/>
 				</uniformPrior>
-				<logNormalPrior mu="0.0" sigma="1.0" offset="0.0">
+				<logNormalPrior mu="0.0" sigma="4.0" offset="0.0">
 					<parameter idref="constant.popSize"/>
 				</logNormalPrior>
 				<coalescentLikelihood idref="coalescent"/>
@@ -202,7 +197,6 @@
 			<treeLengthStatistic idref="treeLength"/>
 			<parameter idref="constant.popSize"/>
 			<parameter idref="clock.rate"/>
-			<rateStatistic idref="meanRate"/>
 			<treeDataLikelihood idref="treeLikelihood"/>
 			<strictClockBranchRates idref="branchRates"/>
 			<coalescentLikelihood idref="coalescent"/>

@@ -22,15 +22,16 @@ get_trajectory <- function(type) {
     logistic_upper   <- 200
     logistic_lower   <- 10
     bottleneck_start <- 50
-    bottleneck_end   <- 80
+    bottleneck_end   <- 300
     bust_time        <- 2
+    cyclic_scale_factor <- 5
   
     switch(type, 
           "uniform"    = function(t) unif_traj(t, level=unif_upper),
           "expgrowth"  = function(t) exp_traj(t, scale=exp_scale, rate=exp_rate),
           "boombust"   = function(t) boombust_traj(t, bust=bust_time, scale=exp_scale),
           "logistic"   = function(t) logistic_traj(t, max=logistic_upper),
-          "cyclic"     = function(t) cyclic_traj(t),
+          "cyclic"     = function(t) cyclic_scale_factor * cyclic_traj(t),
           "bottleneck" = function(t) bottleneck_traj2(t, min=unif_lower, max=unif_upper, start=bottleneck_start, stop=bottleneck_end)
     )
 }

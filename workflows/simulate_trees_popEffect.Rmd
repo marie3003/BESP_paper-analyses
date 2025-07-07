@@ -61,9 +61,35 @@ save_simulation(sim, trajname, path = "../results/test/", gridsize=1000, sanitis
 
 ./seq-gen -mHKY -t2.07 -f0.17,0.33,0.17,0.33 -l450 -s4.6e-4 -n1 < ../../BESP_paper-analyses/results/test/cyclic_test.tree > ../../BESP_paper-analyses/results/test/cyclic_test_small.dat
 
+./seq-gen -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l450 -5e-4 -n1 < ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform.trees > ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform.dat
+
+cp ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform.dat ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform.fasta
+
 - reformat .dat file to .fasta file
 cp cyclic_test_small.dat cyclic_test_small.fasta
 cp ../../BESP_paper-analyses/results/test/cyclic_test_small.dat ../../BESP_paper-analyses/results/test/cyclic_test_small.fasta
+
+
+i=1
+while read -r tree; do
+    echo "$tree" | ./seq-gen -mHKY -f0.25,0.25,0.25,0.25 -l450 -s4.6e-4 -n1 > ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform_$i.fasta
+    i=$((i + 1))
+done < ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform.trees
+--> fails because read has a limit on how long of a tree it can have as input
+
+Instead use:
+awk '{print > ("uniform_" NR-1".nwk")}' ../../BESP_paper-analyses/results/pop_size_simulations/linear_constant/uniform/uniform.trees
+
+for file in uniform_*.nwk; do
+    base=$(basename "$file" .nwk)
+    ./seq-gen -mHKY -f0.25,0.25,0.25,0.25 -l450 -s4.6e-4 -n1 < "$file" > ../../BESP_paper-analyses/results/pop_size_simulations/linear_constant/uniform/"$base".fasta
+    rm "$file"
+done
+
+awk '{print > ("uniform_" NR - 1 ".tree")}' uniform.trees
+
+
+python MakeBEASTXML.py -i ../results/pop_size_simulations/config/
 
 
 #### Create BEAST xml file
@@ -72,7 +98,7 @@ cp ../../BESP_paper-analyses/results/test/cyclic_test_small.dat ../../BESP_paper
   - chainlength
 - define config file for my use case (each population model), different to Louis because not supposed to match config file used to simulate tree
 
-- for besp (skyline ...) it uses either equalgroups (splits time into n groups for which population size is estimated) or fixed groups (where the time points between the groups are listed in the config file)
+- for besp (skyline ...) it uses either equal groups (splits time into n groups for which population size is estimated) or fixed groups (where the time points between the groups are listed in the config file)
 
 - adapt template xml file to not use skyline model but population models?
 - adapt operators to only vary tree branch length
@@ -89,3 +115,7 @@ def writeAlignmentFromFasta(fasta_path, output):
 ```
 
 
+
+## Run beast in command line:
+
+java -jar beast.jar -seed 1234 example.xml

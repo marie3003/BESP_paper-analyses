@@ -21,17 +21,17 @@ output:
     source("../scripts/SimUtils.R")
 
     # Global settings
-    nreplicates <- 100
+    nreplicates <- 3
     samp_start  <- 0
-    samp_end    <- 48
+    samp_end    <- 50
     nlimit      <- 10
-    nrsamples   <- 500
-    outputbase  <- "../results/simulations/"
+    nrsamples   <- 200
+    outputbase  <- "../results/pop_size_simulations/"
     
-    trajectories <- data.frame(row.names  =c("expgrowth","boombust","uniform","bottleneck","cyclic","logistic" ),
-                               names      =c("Exponential growth","Boom-bust","Uniform","Bottleneck","Cyclical exponential growth","Cyclical logistic growth"),
-                               maxdensity = c(0.4, 0.4, 0.05, 0.05, 0.05, 0.05),
-                               maxlineages= c(300, 300, 100,  100,  100,  100))
+    trajectories <- data.frame(row.names  =c("expgrowth","uniform","bottleneck"),
+                               names      =c("Exponential growth","Uniform","Bottleneck"),
+                               maxdensity = c(0.4, 0.05, 0.05),
+                               maxlineages = c(300, 100, 100))
     
 ```
     
@@ -145,10 +145,10 @@ for (i in 1:nrow(trajectories)) {
   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
   sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_start, nlimit=nlimit)
   sims <- save_simulation(sims, basename=trajname, path=paste0(outputpath,trajname,"/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
-  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
-  title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ",nrsamples, ", Sampling period: [",samp_start,",",samp_start,"]"), outer=TRUE, line=-1.0)
+#  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+#  title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: #",nrsamples, ", Sampling period: [",samp_start,",",samp_start,"]"), outer=TRUE, line=-1.0)
   
-  cat("\n \\clearpage \n \n")
+#  cat("\n \\clearpage \n \n")
 }
 
 
@@ -169,10 +169,10 @@ for (i in 1:nrow(trajectories)) {
   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
   sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_end, nlimit=nlimit)
   sims <- save_simulation(sims, basename=trajname, path=paste0(outputpath,trajname,"/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
-  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
-  title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ",nrsamples, ", Sampling period: [",samp_start,",",samp_end,"]"), outer=TRUE, line=-1.0)
+#  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+#  title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: #",nrsamples, ", Sampling period: [",samp_start,",",samp_end,"]"), outer=TRUE, line=-1.0)
   
-  cat("\n \\clearpage \n \n")
+#  cat("\n \\clearpage \n \n")
 }
 
 
@@ -192,10 +192,10 @@ for (i in 1:nrow(trajectories)) {
   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
   sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_end, nlimit=nlimit)
   sims <- save_simulation(sims, basename=trajname, path=paste0(outputpath,trajname,"/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
-  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
-  title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ~",nrsamples, ", Sampling period: [",samp_start,",",samp_end,"]"), outer=TRUE, line=-1.0)
+#  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+#  title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: #~",nrsamples, ", Sampling period: [",samp_start,",",samp_end,"]"), outer=TRUE, line=-1.0)
   
-  cat("\n \\clearpage \n \n")
+#  cat("\n \\clearpage \n \n")
 }
 
 
