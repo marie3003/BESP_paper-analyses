@@ -20,4 +20,4 @@ FILE_LIST=/cluster/work/stadler/beckermar/BESP_paper-analyses/scripts/xml_list.t
 XML_FILE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $FILE_LIST)
 
 # Run BEAST on that file
-beast -overwrite -seed 42 -java "$XML_FILE"
+beast -overwrite -seed 42 -java -working "$XML_FILE"
