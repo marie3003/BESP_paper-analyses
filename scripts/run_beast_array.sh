@@ -1,7 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=beast_array
-#SBATCH --output=logs/dummy_%A_%a.out
-#SBATCH --error=logs/dummy_%A_%a.err
 #SBATCH --time=01:20:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=4G
