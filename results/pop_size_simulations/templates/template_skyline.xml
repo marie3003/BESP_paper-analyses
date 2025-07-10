@@ -83,11 +83,6 @@
 		</rate>
 	</strictClockBranchRates>
 	
-	<rateStatistic id="meanRate" name="meanRate" mode="mean" internal="true" external="true">
-		<treeModel idref="treeModel"/>
-		<strictClockBranchRates idref="branchRates"/>
-	</rateStatistic>
-	
 
 	<!-- The JC substitution model (Jukes & Cantor, 1969)                        -->
 	<HKYModel id="jc">
@@ -187,9 +182,7 @@
 			<parameter idref="treeModel.rootHeight"/>
 			<treeLengthStatistic idref="treeLength"/>
 			<parameter idref="skyline.popSize"/>
-			<parameter idref="skyline.groupSize"/>
 			<parameter idref="clock.rate"/>
-			<rateStatistic idref="meanRate"/>
 			<treeDataLikelihood idref="treeLikelihood"/>
 			<strictClockBranchRates idref="branchRates"/>
 			<generalizedSkyLineLikelihood idref="skyline"/>
