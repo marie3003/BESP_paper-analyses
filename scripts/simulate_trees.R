@@ -31,7 +31,7 @@ for (i in 1:nrow(trajectories)) {
   
   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
   sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_start, nlimit=nlimit)
-  sims <- save_simulation(sims, basename=trajname, path=paste0(outputpath,trajname,"/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(outputpath,trajname,"/"), RData=FALSE, csv=FALSE, newick=TRUE, json=TRUE)
 }
 
 # simulate trees with preferential heterogeneous sampling
