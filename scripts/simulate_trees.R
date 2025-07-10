@@ -1,7 +1,10 @@
 library(phylodyn)
 
 # file needs to be run from BESP_paper-analysis project folder
-script_dir <- dirname(normalizePath(sys.frame(1)$ofile))
+#script_dir <- dirname(normalizePath(sys.frame(1)$ofile))
+args <- commandArgs(trailingOnly = FALSE)
+script_path <- sub("^--file=", "", args[grep("^--file=", args)])
+script_dir <- if (length(script_path) > 0) dirname(normalizePath(script_path)) else getwd()
 setwd(script_dir)
 source("SimUtils.R")
 
