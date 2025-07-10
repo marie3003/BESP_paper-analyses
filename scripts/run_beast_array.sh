@@ -21,6 +21,7 @@ XML_NAME=$(basename "$XML_FILE" .xml)
 module load jdk/8u141-b15
 module load stack/2024-06
 module load gcc/12.2.0
+module load beagle/5.4
 module load beast1/1.10.4
 
 # Define output paths
