@@ -4,7 +4,7 @@
 #SBATCH --error=simulate_trees.err
 #SBATCH --time=01:00:00          # 1 hour
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --mem-per-cpu=4G
 #SBATCH --partition=standard     # or your cluster's partition
 
 # Load R module (if needed on your cluster)
