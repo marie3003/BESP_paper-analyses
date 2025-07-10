@@ -100,7 +100,7 @@ for filename in sorted(os.listdir(inputpath)):
 
             # Run Seq-Gen to generate alignment
             aln_path = os.path.join(outputpath, f"aln_{i}.fasta")
-            cmd = f"{seqGenPath} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l450 -s5e-4 -n1 < {tree_path} > {aln_path}"
+            cmd = f"{seqGenPath} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l{pars['seqLength']} -s{pars['clockRate']} -n1 < {tree_path} > {aln_path}"
             os.system(cmd)
 
             # Parse alignment and add to parameters
@@ -120,6 +120,14 @@ for filename in sorted(os.listdir(inputpath)):
                 scriptfile.write("%s\n" % (cmd))
 
             i += 1
+
+            # Append alignment to combined file with tree-specific headers
+            combined_aln_path = os.path.join(outputpath, "combined_alignments.fasta")
+            with open(aln_path, "r") as aln_in, open(combined_aln_path, "a") as aln_out:
+                for line in aln_in:
+                    if line.startswith(">"):
+                        line = f">T{i}_{line[1:]}"  # Prefix with tree ID
+                    aln_out.write(line)
 
             # Delete temporary files
             os.remove(aln_path)

@@ -18,22 +18,39 @@ get_trajectory <- function(type) {
     unif_upper       <- 2000
     unif_lower       <- 200
     exp_scale        <- 2000
-    exp_rate         <- 0.02
+    exp_rate_fast    <- 0.002
+    exp_rate_slow    <- 0.001
     logistic_upper   <- 200
     logistic_lower   <- 10
     bottleneck_start <- 50
     bottleneck_end   <- 300
     bust_time        <- 2
     cyclic_scale_factor <- 5
+    
+    cyclic_traj_boombust <- function(t) {
+      t_months <- t * 12
+      cycle_pos <- t_months %% 12  # position within the 12-month cycle
+      
+      result <- ifelse(cycle_pos <= 6,
+                       1800 * exp(-cycle_pos / 2) + 200,
+                       1800 * exp(cycle_pos / 2 - 6)) + 200
+      
+      return(result)
+    }
   
     switch(type, 
           "uniform"    = function(t) unif_traj(t, level=unif_upper),
-          "expgrowth"  = function(t) exp_traj(t, scale=exp_scale, rate=exp_rate),
+          "expgrowth_fast"  = function(t) exp_traj(t, scale=exp_scale, rate=exp_rate_fast),
+          "expgrowth_slow"  = function(t) exp_traj(t, scale=exp_scale, rate=exp_rate_slow),
           "boombust"   = function(t) boombust_traj(t, bust=bust_time, scale=exp_scale),
           "logistic"   = function(t) logistic_traj(t, max=logistic_upper),
-          "cyclic"     = function(t) cyclic_scale_factor * cyclic_traj(t),
+          "cyclic"     = function(t) cyclic_traj_boombust(t),
           "bottleneck" = function(t) bottleneck_traj2(t, min=unif_lower, max=unif_upper, start=bottleneck_start, stop=bottleneck_end)
     )
+}
+
+traj_beta <- function(t, traj, beta) {
+  pmax(traj(t), .Machine$double.eps)^beta
 }
 
 
@@ -48,6 +65,7 @@ simulate_genealogy <- function(traj, nrsamples=500, samp_start=0, samp_end=50, s
 
     samp_end <- min(samp_end, tryCatch(uniroot(function(t) traj(t)-nlimit, interval = c(samp_start,samp_end))$root, error = function(x) NA), na.rm=TRUE)
     samp_end <- floor(samp_end)
+    
     
     if (samp_type == "independent") {
         # Uniform probability of sampling times between samp_start and samp_end
@@ -65,7 +83,7 @@ simulate_genealogy <- function(traj, nrsamples=500, samp_start=0, samp_end=50, s
         samp_intensity <- c()
         samp_times     <- c()
         for (i in 1:nrepochs) {
-            epoch_intensity <- epoch_samples/integrate(traj_beta, epoch_times[i], epoch_times[i+1], traj=traj, beta=beta)$value    
+            epoch_intensity <- epoch_samples/integrate(traj_beta, epoch_times[i], epoch_times[i+1], traj=traj, beta=beta, subdivisions = 1000, rel.tol = 1e-6, abs.tol = 1e-12)$value    
             samp_times      <- c(samp_times, pref_sample(traj, c=epoch_intensity, lim=c(epoch_times[i], epoch_times[i+1]), beta=beta))
             samp_intensity  <- c(samp_intensity, epoch_intensity)
         }
@@ -108,7 +126,7 @@ simulate_genealogy_save <- function(traj, nrsamples=500, samp_end=50) {
   
   # Get the sampling intensity and sampling times (sampling intensity is a constant of proportionality)
   # Assumes a constant sampling intensity through time
-  samp_intensity <- nrsamples/integrate(traj_beta, 0, samp_end, traj=traj, beta=1)$value    
+  samp_intensity <- nrsamples/integrate(traj_beta, 0, samp_end, traj=traj, beta=1, subdivisions = 1000, rel.tol = 1e-6, abs.tol = 1e-12)$value    
   samp_times     <- pref_sample(traj, c=samp_intensity, lim=c(0,samp_end), beta=1)
   
   # Simulate the genealogy under the population size trajectory and sampling times
