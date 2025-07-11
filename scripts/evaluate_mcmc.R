@@ -12,7 +12,9 @@ mcmc_successful <- function(log_path, burnin_frac = 0.1, cutoff = 200) {
   }
 }
 
-script_dir <- dirname(normalizePath(sys.frame(1)$ofile))
+args <- commandArgs(trailingOnly = FALSE)
+script.path <- normalizePath(sub("--file=", "", args[grep("--file=", args)]))
+script.dir <- dirname(script.path)
 parent_folder <- file.path(script_dir, "../results/pop_size_simulations/simulation_results")
 output_file <- file.path(script_dir, "successful_mcmc_runs.csv")
 
