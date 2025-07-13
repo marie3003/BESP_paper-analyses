@@ -16,9 +16,7 @@ To run beast, first a list of all beast xml files is needed. This list is genera
 
 Afterwards Beast is run on all xml files by running `run_beast_array.sh`.
 
-### Continue with trees with sufficient ESS
-The R-script `evaluate_mcmc.R` can be run which outputs a csv file specifying the paths to all successfully obtained `.trees` files with an ESS on all estimated values above $200$. 
+### Create summary trees of runs with sufficient ESS
+The `create_summary_trees.sh` script select all trees that have a sufficiently high ESS (above $200$) for all estimated parameters and rund treeannotator on all of them with a burnin of $10\%$. 
 
-### Create summary trees using treeannotator
-Run the `create_summary_trees.sh` script to create summary trees using treeannotator.
-
+### Compare true simulated trees with summary trees
