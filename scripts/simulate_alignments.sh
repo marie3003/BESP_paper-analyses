@@ -26,8 +26,16 @@ echo TREE: $TREE
 FASTA_FILE="${BASE}/${FOLDER}_${INDEX}.fasta"
 SNP_FILE="${BASE}/${FOLDER}_${INDEX}_snps.fasta"
 
-# Run seq-gen
-echo "$TREE" | ./../../Seq-Gen-1.3.5/source/seq-gen -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l10000000 -s4.6e-8 -n1 > "$FASTA_FILE"
+# Write the tree to a temp file with a newline
+echo -e "$TREE\n" > tmp_tree_${SLURM_ARRAY_TASK_ID}.nwk
+
+# Run seq-gen using that temp file
+./../../Seq-Gen-1.3.5/source/seq-gen \
+  -mHKY -t0.5 -f0.25,0.25,0.25,0.25 \
+  -l10000000 -s4.6e-8 -n1 < tmp_tree_${SLURM_ARRAY_TASK_ID}.nwk > "$FASTA_FILE"
+
+# Remove the temp file after
+rm tmp_tree_${SLURM_ARRAY_TASK_ID}.nwk
 
 # Run snp-sites
 snp-sites -o "$SNP_FILE" "$FASTA_FILE"
