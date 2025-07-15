@@ -16,6 +16,7 @@ BESP_paper-analyses.Rproj
 renv/
 results/pop_size_simulations/simulation_results/
 results/pop_size_simulations/simulation_results_old/
+results/pop_size_simulations/simulation_results_new/
 results/pop_size_simulations/simulation_results_2/
 results/pop_size_simulations/independent_homochronous/
 results/pop_size_simulations/linear_constant/

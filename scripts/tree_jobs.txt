@@ -1,0 +1,15 @@
+uniform 0
+uniform 1
+uniform 2
+uniform 3
+uniform 4
+expgrowth_fast 0
+expgrowth_fast 1
+expgrowth_fast 2
+expgrowth_fast 3
+expgrowth_fast 4
+expgrowth_slow 0
+expgrowth_slow 1
+expgrowth_slow 2
+expgrowth_slow 3
+expgrowth_slow 4
