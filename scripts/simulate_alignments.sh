@@ -4,7 +4,7 @@
 #SBATCH --error=logs/job_%A_%a.err
 #SBATCH --array=0-14
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --mem-per-cpu=4G
 #SBATCH --time=00:30:00
 
 conda activate snp_sites
