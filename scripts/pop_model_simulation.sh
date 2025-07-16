@@ -23,7 +23,6 @@ ls *.xml | parallel --delay 1 --jobs 75% --results outdir -I% --max-args 1 '"'/V
 # run tracer on all log files in all subdirectories and delete trees that haven't converged
 
 # combine .trees files into summary tree running TreeAnnotator
-#!/bin/bash
 
 CSV_FILE="/Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/scripts/successful_mcmc_runs.csv"
 
