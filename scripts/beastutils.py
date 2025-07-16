@@ -1,7 +1,8 @@
 import os, sys, io
 import numpy as np
 from subprocess import call
-from Bio import Phylo, Nexus, AlignIO
+from Bio import Phylo, Nexus, AlignIO, SeqIO
+import random
 
 def writeDateTrait(dates,  output):
 
@@ -73,6 +74,25 @@ def makeXMLFile(pars, template, outputfile="", outputpath=""):
 	outfile = open(outputpath+"/"+outputfile+".xml", 'w')
 	outfile.write(output)
 	outfile.close()
+
+def subsample_fasta_columns(input_fasta, output_fasta, max_sites):
+    records = list(SeqIO.parse(input_fasta, "fasta"))
+    if not records:
+        raise ValueError("No sequences found in FASTA file: " + input_fasta)
+
+    alignment_length = len(records[0].seq)
+    keep_sites = list(range(alignment_length))
+
+	# subsamples if there are more sites than max_sites, otherwise keeps all sites
+    if alignment_length > max_sites:
+        keep_sites = sorted(random.sample(keep_sites, max_sites))
+
+    # Subsample and write to output
+    with open(output_fasta, "w") as out_f:
+        for record in records:
+            record.seq = record.seq.__class__("".join([record.seq[i] for i in keep_sites]))
+            SeqIO.write(record, out_f, "fasta")
+
 #
 
 def pars_alignment(aln_path, pars):

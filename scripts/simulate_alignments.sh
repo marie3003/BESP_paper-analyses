@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=seqgen_snp
-#SBATCH --output=logs/job_%A_%a.out
-#SBATCH --error=logs/job_%A_%a.err
+#SBATCH --output=logs/simalignment_%A_%a.out
+#SBATCH --error=logs/simalignment_%A_%a.err
 #SBATCH --array=0-14
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=8G
@@ -19,8 +19,6 @@ INDEX=$(echo "$JOB_LINE" | cut -d ' ' -f 2)
 BASE="../results/pop_size_simulations/independent_homochronous/${FOLDER}"
 TREE_FILE="${BASE}/${FOLDER}.trees"
 TREE=$(sed -n "$((INDEX + 1))p" "$TREE_FILE")
-echo TREE_FILE: $TREE_FILE
-echo TREE: $TREE
 
 # Define output paths
 FASTA_FILE="${BASE}/${FOLDER}_${INDEX}.fasta"

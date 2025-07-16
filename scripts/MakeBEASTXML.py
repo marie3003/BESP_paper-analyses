@@ -93,15 +93,15 @@ for filename in sorted(os.listdir(inputpath)):
         i = 0		
         for tree in treefile:
             
-            # Save tree to temporary file
-            tree_path = os.path.join(outputpath, f"tmp_tree_{i}.nwk")
-            with open(tree_path, "w") as tf:
-                tf.write(tree.strip() + "\n")
+            # Define path to SNP alignment
+            snp_input_path = pars["trees"].replace(".trees", f"_{i}_snps.fasta")
 
-            # Run Seq-Gen to generate alignment
+            if not os.path.exists(snp_input_path):
+                raise FileNotFoundError(f"SNP alignment not found: {snp_input_path}")
+
+            # Subsample SNPs to max nSites
             aln_path = os.path.join(outputpath, f"aln_{i}.fasta")
-            cmd = f"{seqGenPath} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l{pars['seqLength']} -s{pars['clockRate']} -n1 < {tree_path} > {aln_path}"
-            os.system(cmd)
+            subsample_fasta_columns(snp_input_path, aln_path, pars["nSites"])
 
             # Parse alignment and add to parameters
             pars_alignment(aln_path, pars)
@@ -131,7 +131,6 @@ for filename in sorted(os.listdir(inputpath)):
 
             # Delete temporary files
             os.remove(aln_path)
-            os.remove(tree_path)
             
             
         treefile.close()		
