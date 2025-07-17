@@ -101,7 +101,7 @@ for filename in sorted(os.listdir(inputpath)):
 
             # Subsample SNPs to max nSites
             aln_path = os.path.join(outputpath, f"aln_{i}.fasta")
-            frac_sites_kept = subsample_fasta_columns(snp_input_path, aln_path, pars["nSites"])
+            alignment_length = subsample_fasta_columns(snp_input_path, aln_path, pars["nSites"])
 
             # Parse alignment and add to parameters
             pars_alignment(aln_path, pars)
@@ -112,7 +112,7 @@ for filename in sorted(os.listdir(inputpath)):
 
             # Create XML file			
             pars["name"] = basename+".T"+str(i)
-            pars["clockRate"] = pars["clockRate"] * frac_sites_kept
+            pars["clockRate"] = pars["clockRate"] * 10000000 / alignment_length  # Adjust clock rate based on alignment length
             makeXMLFile(pars, template, outputfile=pars["name"], outputpath=outputpath)
 
             # Write command to scripts

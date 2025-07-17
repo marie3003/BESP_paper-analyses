@@ -92,8 +92,9 @@ def subsample_fasta_columns(input_fasta, output_fasta, max_sites):
         for record in records:
             record.seq = record.seq.__class__("".join([record.seq[i] for i in keep_sites]))
             SeqIO.write(record, out_f, "fasta")
+    return alignment_length 
 
-    return len(keep_sites)/alignment_length # Return fraction of sites kept
+
 
 
 
