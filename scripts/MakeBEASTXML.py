@@ -112,8 +112,10 @@ for filename in sorted(os.listdir(inputpath)):
 
             # Create XML file			
             pars["name"] = basename+".T"+str(i)
+            original_clock_rate = pars["clockRate"]
             pars["clockRate"] = pars["clockRate"] * 10000000 / alignment_length  # Adjust clock rate based on alignment length
             makeXMLFile(pars, template, outputfile=pars["name"], outputpath=outputpath)
+            pars["clockRate"] = original_clock_rate  # Restore original clock rate for next tree
 
             # Write command to scripts
             for seed in seeds:

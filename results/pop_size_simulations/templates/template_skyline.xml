@@ -60,6 +60,7 @@
 	<generalizedSkyLineLikelihood id="skyline" linear="false">
 		<populationSizes>
 			<parameter id="skyline.popSize" dimension="{$numPopulationBins}" value="{$initialPopSize}" lower="0.0"/>
+			<!-- <parameter id="skyline.popSize" dimension="{$numPopulationBins}" value="{$initialPopSize}" lower="1e-6" upper="1e8" hardBounds="false"/> -->
 		</populationSizes>
 		<groupSizes>
 			<parameter id="skyline.groupSize" dimension="{$numPopulationBins}"/>
