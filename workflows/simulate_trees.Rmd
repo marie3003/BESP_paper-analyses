@@ -28,10 +28,10 @@ output:
     nrsamples   <- 200
     outputbase  <- "../results/pop_size_simulations/"
     
-    trajectories <- data.frame(row.names  =c("expgrowth","uniform","bottleneck"),
-                               names      =c("Exponential growth","Uniform","Bottleneck"),
-                               maxdensity = c(0.4, 0.05, 0.05),
-                               maxlineages = c(300, 100, 100))
+    trajectories <- data.frame(row.names  =c("expgrowth","uniform","bottleneck", "cyclic"),
+                               names      =c("Exponential growth","Uniform","Bottleneck", "Cyclical exponential growth"),
+                               maxdensity = c(0.4, 0.05, 0.05, 0.05),
+                               maxlineages = c(300, 100, 100, 100))
     
 ```
     

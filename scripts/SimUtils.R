@@ -39,7 +39,6 @@ get_trajectory <- function(type) {
     }
   
     switch(type, 
-          "uniform"    = function(t) unif_traj(t, level=unif_upper),
           "expgrowth_fast"  = function(t) exp_traj(t, scale=exp_scale, rate=exp_rate_fast),
           "expgrowth_slow"  = function(t) exp_traj(t, scale=exp_scale, rate=exp_rate_slow),
           "boombust"   = function(t) boombust_traj(t, bust=bust_time, scale=exp_scale),

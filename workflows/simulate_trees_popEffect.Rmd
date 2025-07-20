@@ -59,6 +59,19 @@ save_simulation(sim, trajname, path = "../results/test/", gridsize=1000, sanitis
 ./seq-gen -mHKY -t2.07 -f0.17,0.33,0.17,0.33 -l4500000 -s4.6e-8 -n1 < ../../BESP_paper-analyses/results/test/cyclic_test.tree > ../../BESP_paper-analyses/results/test/cyclic_test.dat
 (Time taken: 108.834 seconds)
 
+./seq-gen -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l10000000 -s4.6e-8 -n1 < ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform_0.tree > ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform_0.fasta
+
+snp-sites -o ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform_0_snps.fasta ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform_0.fasta
+
+folders=(uniform expgrowth_fast expgrowth_slow)
+for folder in "${folders[@]}"; do
+  n_trees=$(grep -c ";" ../results/pop_size_simulations/independent_homochronous/${folder}/${folder}.trees)
+  for i in $(seq 0 $((n_trees - 1))); do
+    echo "${folder} ${i}"
+  done
+done > tree_jobs.txt
+
+
 ./seq-gen -mHKY -t2.07 -f0.17,0.33,0.17,0.33 -l450 -s4.6e-4 -n1 < ../../BESP_paper-analyses/results/test/cyclic_test.tree > ../../BESP_paper-analyses/results/test/cyclic_test_small.dat
 
 ./seq-gen -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l450 -5e-4 -n1 < ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform.trees > ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform.dat
@@ -78,15 +91,17 @@ done < ../../BESP_paper-analyses/results/pop_size_simulations/independent_homoch
 --> fails because read has a limit on how long of a tree it can have as input
 
 Instead use:
-awk '{print > ("uniform_" NR-1".nwk")}' ../../BESP_paper-analyses/results/pop_size_simulations/linear_constant/uniform/uniform.trees
+awk '{print > ("uniform_" NR-1".nwk")}' /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/uniform.trees
 
 for file in uniform_*.nwk; do
     base=$(basename "$file" .nwk)
-    ./seq-gen -mHKY -f0.25,0.25,0.25,0.25 -l450 -s4.6e-4 -n1 < "$file" > ../../BESP_paper-analyses/results/pop_size_simulations/linear_constant/uniform/"$base".fasta
+    ./seq-gen -mHKY -f0.25,0.25,0.25,0.25 -l450 -s4.6e-4 -n1 < "$file" > ../../BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/uniform/"$base".fasta
     rm "$file"
 done
 
 awk '{print > ("uniform_" NR - 1 ".tree")}' uniform.trees
+awk '{filename = "uniform_" (NR - 1) ".tree"; print > filename}' uniform.trees
+
 
 
 python MakeBEASTXML.py -i ../results/pop_size_simulations/config/
@@ -114,8 +129,26 @@ def writeAlignmentFromFasta(fasta_path, output):
         output.write(f'\n\t\t\t\t\t<sequence spec="Sequence" taxon="{taxon}" value="{sequence}" />')
 ```
 
-
+## Make list of all beast xml files
+Run in scripts folder
+find ../results/pop_size_simulations/ -name "*.xml" > xml_list.txt
 
 ## Run beast in command line:
 
 java -jar beast.jar -seed 1234 example.xml
+
+## Download results from cluster
+
+scp -r beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
+
+rsync -avz beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
+
+rsync -avz beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/independent_homochronous /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
+
+
+rsync -av --include='*/' --include='*.log' --include='*.tree' --include='*.xml' --exclude='*' \
+beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
+
+scp beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/scripts/successful_mcmc_runs.csv /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/scripts
+
+scp beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/skyline/expgrowth_fast/highmutsig/combined_alignments.fasta /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/skyline/expgrowth_fast/highmutsig
