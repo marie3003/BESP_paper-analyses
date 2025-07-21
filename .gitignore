@@ -22,3 +22,4 @@ results/pop_size_simulations/independent_homochronous/
 results/pop_size_simulations/linear_constant/
 results/test/
 scripts/CreateSamplingTimes.R
+workflows/old_code.py

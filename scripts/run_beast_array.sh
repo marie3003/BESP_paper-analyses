@@ -2,7 +2,7 @@
 #SBATCH --job-name=beast_array
 #SBATCH --output=logs/beast_%A_%a.out
 #SBATCH --error=logs/beast_%A_%a.err
-#SBATCH --time=14:00:00
+#SBATCH --time=16:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=8G
 #SBATCH --array=1-90
