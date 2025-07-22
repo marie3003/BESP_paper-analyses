@@ -638,33 +638,6 @@ def plot_height_errors_by_time_bin(ax, df_sub, y_max, bins=10, error_col="height
         showfliers=False,
         palette=["#a6444f", "#397398"]
     )
-
-    '''sns.violinplot(
-        data=df_sub,
-        x="time_bin",
-        y=error_col,
-        hue="model",
-        ax=ax,
-        cut=0,               # Don’t extend violins beyond data range
-        density_norm='width',      # Same width for all violins
-        inner="quartile",    # Show quartiles
-        palette=["#a6444f", "#397398"],
-        dodge=True           # Separate violins for each hue
-    )'''
-
-    '''sns.stripplot(
-        data=df_sub,
-        x="time_bin",
-        y=error_col,
-        hue="model",
-        ax = ax,
-        palette=["#a6444f", "#397398"],
-        dodge=True,
-        alpha=0.2,
-        size=2,
-        jitter=True,
-        linewidth=0
-    )'''
     
     # Formatting
     #ax.set_ylim(-5, 5)
@@ -675,6 +648,12 @@ def plot_height_errors_by_time_bin(ax, df_sub, y_max, bins=10, error_col="height
     ax.legend(title="Model", loc="upper right")
 
 def plot_height_error_grid(df, y_max, bins=10, error_col="height_abs_relative_error", title = ""):
+
+    if error_col.startswith("bl"):
+        df = df.dropna()
+    elif error_col.startswith("height"):
+        df = df[df.internal == True]
+
     mutsig_order = ["low", "med", "high"]
     growth_model_order = ["uniform", "expgrowth_slow", "expgrowth_fast"]
     
@@ -685,6 +664,55 @@ def plot_height_error_grid(df, y_max, bins=10, error_col="height_abs_relative_er
             ax = axes[i, j]
             df_sub = df[(df["mutsig"] == mutsig) & (df["growth_model"] == growth_model)]
             plot_height_errors_by_time_bin(ax, df_sub, y_max=y_max, bins=bins, error_col=error_col)
+            
+            if i == 0:
+                ax.set_title(growth_model.replace("expgrowth_", "exp-growth ").capitalize())
+            if j == 0:
+                ax.set_ylabel(f"{mutsig} mutation signal\n{error_col}")
+
+    plt.suptitle(title, fontsize = 20)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_height_errors_scatter_by_time(ax, df_sub, error_col="height_abs_relative_error", y_range = (0,10)):
+    df_sub = df_sub.copy()
+    df_sub = df_sub.dropna(subset=["height_sim", error_col])
+
+    sns.scatterplot(
+        data=df_sub,
+        x="height_sim",
+        y=error_col,
+        hue="model",
+        palette=["#a6444f", "#397398"],
+        ax=ax,
+        alpha=0.5,
+        s=10,
+        linewidth=0
+    )
+
+    # Formatting
+    ax.set_ylim(y_range)
+    ax.set_xlabel("Time before present")
+    ax.legend(title="Model", loc="upper right")
+
+def plot_height_error_grid_scatter(df, error_col="height_abs_relative_error", title = "", y_range = (0, 10)):
+    
+    if error_col.startswith("bl"):
+        df = df.dropna()
+    elif error_col.startswith("height"):
+        df = df[df.internal == True]
+    
+    mutsig_order = ["low", "med", "high"]
+    growth_model_order = ["uniform", "expgrowth_slow", "expgrowth_fast"]
+    
+    fig, axes = plt.subplots(nrows=len(mutsig_order), ncols=len(growth_model_order), figsize=(18, 10), sharey=False)
+
+    for i, mutsig in enumerate(mutsig_order):
+        for j, growth_model in enumerate(growth_model_order):
+            ax = axes[i, j]
+            df_sub = df[(df["mutsig"] == mutsig) & (df["growth_model"] == growth_model)]
+            plot_height_errors_scatter_by_time(ax, df_sub, error_col=error_col, y_range = y_range)
             
             if i == 0:
                 ax.set_title(growth_model.replace("expgrowth_", "exp-growth ").capitalize())

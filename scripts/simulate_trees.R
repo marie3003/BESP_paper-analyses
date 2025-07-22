@@ -21,6 +21,7 @@ trajectories <- data.frame(row.names  =c("expgrowth_fast", "expgrowth_slow", "un
                            maxdensity = c(0.4, 0.4, 0.05),
                            maxlineages = c(300, 300, 100))
 
+
 # simulate trees with independent homogeneous sampling
 set.seed(9)
 outputpath <- paste0(outputbase,"independent_homochronous/")
