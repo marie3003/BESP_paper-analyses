@@ -352,6 +352,102 @@ def root_height_all_trees(path_df):
 
     return combined_df
 
+### POPULATION SIZE ERROR
+
+def extract_tree_info(row, num_groups=10, burnin=0.1):
+
+    # Load tree
+    tree = Phylo.read(row["tree_path_skyline"], "nexus")
+
+    # Extract population size estimates
+    skyline_times = get_skyline_group_boundaries(tree, num_groups=num_groups)
+    skyline_means = get_mean_population_size(row["log_path_skyline"], burnin=burnin, mode="skyline")
+    coalescent_mean = get_mean_population_size(row["log_path_constcoal"], burnin=burnin, mode="constcoal")
+
+    return pd.Series({
+            "skyline_means": skyline_means,
+            "skyline_times": skyline_times,
+            "coalescent_mean": coalescent_mean})
+
+
+def add_tree_information(df, num_groups = 10, burnin = 0.1):
+    estimates = df.apply(lambda row: extract_tree_info(row, num_groups=num_groups, burnin=burnin), axis=1)
+    return pd.concat([df, estimates], axis=1)
+
+def calculate_population_size_error(
+    t,
+    present_pop_size,
+    growth_rate,
+    skyline_times=None,
+    skyline_means=None,
+    coalescent_mean=None
+):
+    # 1. True population size at time t
+    true_pop_size = present_pop_size * np.exp(-growth_rate * t)
+
+    # 2. Estimated population size
+    if coalescent_mean is not None:
+        est_pop_size = coalescent_mean
+
+    elif skyline_times is not None and skyline_means is not None:
+
+        # Use np.searchsorted to find the correct interval index
+        interval_index = np.searchsorted(skyline_times, t, side="left") - 1
+        est_pop_size = skyline_means[interval_index]
+
+    else:
+        raise ValueError("Either coalescent_mean or skyline_times + skyline_means must be provided.")
+
+    # 3. Compute errors
+    error = (est_pop_size - true_pop_size)
+    relative_error = error / true_pop_size
+    abs_relative_error = abs(relative_error)
+
+    return {
+        "true_pop_size": true_pop_size,
+        "est_pop_size": est_pop_size,
+        "diff_pop_size": error,
+        "rel_diff_pop_size": relative_error,
+        "abs_rel_diff_pop_size": abs_relative_error
+    }
+
+def add_population_size_errors(node_df, tree_df):
+    # First, rename columns to prepare for merge (avoid name clashes)
+    tree_df_renamed = tree_df.rename(columns={
+        "mutation_signal": "mutsig",
+        "population_model": "growth_model"
+    })
+
+    # Merge node_df with tree_df to bring in matching tree metadata
+    merged_df = node_df.merge(
+        tree_df_renamed,
+        on=["tree_index", "mutsig", "growth_model"],
+        how="left",
+        suffixes=("", "_tree")
+    )
+
+    # Apply row-wise error calculation
+    error_df = merged_df.apply(
+        lambda row: pd.Series(
+            calculate_population_size_error(
+                t=row["height_sim"],
+                present_pop_size=row["present_pop_size"],
+                growth_rate=row["growth_rate"],
+                coalescent_mean=row["coalescent_mean"] if row["model"] == "constcoal" else None,
+                skyline_times=row["skyline_times"] if row["model"] == "skyline" else None,
+                skyline_means=row["skyline_means"] if row["model"] == "skyline" else None
+            )
+        ),
+        axis=1
+    )
+
+    # Combine original dataframe with the new columns
+    merged_df = pd.concat([merged_df, error_df], axis=1)
+    return merged_df
+
+
+
+
 
 ### PLOTTING
 
@@ -696,7 +792,7 @@ def plot_height_errors_scatter_by_time(ax, df_sub, error_col="height_abs_relativ
     ax.set_xlabel("Time before present")
     ax.legend(title="Model", loc="upper right")
 
-def plot_height_error_grid_scatter(df, error_col="height_abs_relative_error", title = "", y_range = (0, 10)):
+def plot_height_error_grid_scatter(df, error_col="height_abs_relative_error", title = "", y_range = (0, 10), x_range = ()):
     
     if error_col.startswith("bl"):
         df = df.dropna()

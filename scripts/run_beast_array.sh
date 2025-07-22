@@ -5,7 +5,7 @@
 #SBATCH --time=16:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=8G
-#SBATCH --array=1-90
+#SBATCH --array=1-1800
 #SBATCH --partition=standard
 
 module load stack/2024-06
