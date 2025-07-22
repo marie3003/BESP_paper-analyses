@@ -9,7 +9,7 @@ setwd(script_dir)
 source("SimUtils.R")
 
 # Global settings
-nreplicates <- 5
+nreplicates <- 100
 samp_start  <- 0
 samp_end    <- 50
 nlimit      <- 10

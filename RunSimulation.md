@@ -6,7 +6,7 @@ This repository contains a simulation study to estimate the impact that differen
 Here you can find an explanation on how to repoduce the simulation study.
 
 ### Simulate trees under a population model
-The population models to choose from are specified in the `SimUtils.R` file. Specific models for simulation are selected in the `simulate_trees.R` file which can be run to simulate the trees.
+The population models to choose from are specified in the `SimUtils.R` file. Specific models for simulation are selected in the `simulate_trees.R` file which can be run to simulate the trees. The simulation can be run using the `simulate_trees.sh` script.
 
 ### Simulate alignment with SeqGen and get SNPs with `snp-sites`
 
@@ -21,6 +21,6 @@ To run beast, first a list of all beast xml files is needed. This list is genera
 Afterwards Beast is run on all xml files by running `run_beast_array.sh`.
 
 ### Create summary trees of runs with sufficient ESS
-The `create_summary_trees.sh` script select all trees that have a sufficiently high ESS (above $200$) for all estimated parameters and runs treeannotator on all of them with a burnin of $10\%$. 
+The `check_mcmc.sh` script select all trees that have a sufficiently high ESS (above $200$) for all estimated parameters and runs treeannotator on all of them with a burnin of $10\%$. 
 
 ### Compare true simulated trees with summary trees

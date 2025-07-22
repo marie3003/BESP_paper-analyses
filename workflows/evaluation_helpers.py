@@ -620,4 +620,78 @@ def plot_tree_comparison(branch_length_df):
     plt.grid(True, which='both', linestyle=':', linewidth=0.5)
     plt.show()
 
+def plot_height_errors_by_time_bin(ax, df_sub, y_max, bins=10, error_col="height_abs_relative_error"):
+    # Bin simulated heights (time since present)
+    df_sub = df_sub.copy()
+    df_sub["time_bin"] = pd.cut(df_sub["height_sim"], bins=np.linspace(0, y_max, bins + 1), include_lowest=True)
+
+    # Drop NaNs
+    df_sub = df_sub.dropna(subset=["time_bin", error_col])
+
+    # Plot
+    sns.boxplot(
+        data=df_sub,
+        x="time_bin",
+        y=error_col,
+        hue="model",
+        ax=ax,
+        showfliers=False,
+        palette=["#a6444f", "#397398"]
+    )
+
+    '''sns.violinplot(
+        data=df_sub,
+        x="time_bin",
+        y=error_col,
+        hue="model",
+        ax=ax,
+        cut=0,               # Don’t extend violins beyond data range
+        density_norm='width',      # Same width for all violins
+        inner="quartile",    # Show quartiles
+        palette=["#a6444f", "#397398"],
+        dodge=True           # Separate violins for each hue
+    )'''
+
+    '''sns.stripplot(
+        data=df_sub,
+        x="time_bin",
+        y=error_col,
+        hue="model",
+        ax = ax,
+        palette=["#a6444f", "#397398"],
+        dodge=True,
+        alpha=0.2,
+        size=2,
+        jitter=True,
+        linewidth=0
+    )'''
+    
+    # Formatting
+    #ax.set_ylim(-5, 5)
+    ax.set_xlabel("Time before present")
+    tick_labels = [f"{int(interval.left)}-{int(interval.right)}" for interval in df_sub["time_bin"].cat.categories]
+    ax.set_xticks(range(len(tick_labels)))
+    ax.set_xticklabels(tick_labels, rotation=45)
+    ax.legend(title="Model", loc="upper right")
+
+def plot_height_error_grid(df, y_max, bins=10, error_col="height_abs_relative_error", title = ""):
+    mutsig_order = ["low", "med", "high"]
+    growth_model_order = ["uniform", "expgrowth_slow", "expgrowth_fast"]
+    
+    fig, axes = plt.subplots(nrows=len(mutsig_order), ncols=len(growth_model_order), figsize=(18, 10), sharey=False)
+
+    for i, mutsig in enumerate(mutsig_order):
+        for j, growth_model in enumerate(growth_model_order):
+            ax = axes[i, j]
+            df_sub = df[(df["mutsig"] == mutsig) & (df["growth_model"] == growth_model)]
+            plot_height_errors_by_time_bin(ax, df_sub, y_max=y_max, bins=bins, error_col=error_col)
+            
+            if i == 0:
+                ax.set_title(growth_model.replace("expgrowth_", "exp-growth ").capitalize())
+            if j == 0:
+                ax.set_ylabel(f"{mutsig} mutation signal\n{error_col}")
+
+    plt.suptitle(title, fontsize = 20)
+    plt.tight_layout()
+    plt.show()
 
