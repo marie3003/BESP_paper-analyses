@@ -2,8 +2,8 @@
 #SBATCH --job-name=simulate_trees
 #SBATCH --output=simulate_trees.out
 #SBATCH --error=simulate_trees.err
-#SBATCH --time=01:00:00          # 1 hour
-#SBATCH --cpus-per-task=1
+#SBATCH --time=05:00:00          # 1 hour
+#SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=4G
 #SBATCH --partition=standard     # or your cluster's partition
 
