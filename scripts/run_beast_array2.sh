@@ -30,4 +30,4 @@ OUT_XML_BASE="/cluster/work/stadler/beckermar/BESP_paper-analyses/pop_size_simul
 mkdir -p "$(dirname "$OUT_XML_BASE")"
 
 # Run BEAST using XML_FILE as input, but redirect output files to new location via -prefix
-beast -overwrite -seed 43 -working "$XML_FILE" -prefix "$OUT_XML_BASE"
+beast -seed 43 -working "$XML_FILE" -prefix "$OUT_XML_BASE"
