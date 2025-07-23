@@ -108,33 +108,50 @@ def process_results(input_csv, present_pop_size = 2000, growth_rates = [0, 0.001
 
     return pivoted
 
-def get_median_population_size(log_path, burnin=0.1, mode = "constcoal"):
+def get_median_population_size(log_path, burnin=0.1, mode="constcoal"):
     """
-    Parses a BEAST log file and computes the average population size 
-    after discarding burn-in.
+    Parses a BEAST log file and computes the median population size 
+    after discarding burn-in, along with 95% confidence intervals.
 
     Parameters:
         log_path (str): Path to the BEAST .log file.
         burnin (int or float): Burn-in can be given as:
             - a float between 0 and 1 (fraction of the samples to discard), or
             - an int (number of initial states to discard)
-        mode (str): The model type, either "constcoal" or "skyline". Determines whether to look for one constant population size or multiple population sizes in the log file.
+        mode (str): Either "constcoal" or "skyline".
 
     Returns:
-        float: Average of 'constant.popSize' after burn-in or array of averages for skyline model.
+        If mode == "constcoal":
+            tuple: (median, lower_95, upper_95) of constant.popSize
+        If mode == "skyline":
+            np.ndarray: shape (n_intervals, 3), each row is (median, lower_95, upper_95)
     """
-
     df = pd.read_csv(log_path, comment='#', sep='\t')
 
-    burnin_rows = int(len(df) * burnin)
+    burnin_rows = int(len(df) * burnin) if isinstance(burnin, float) else burnin
     df_post_burnin = df.iloc[burnin_rows:]
 
     if mode == "constcoal":
-        median_pop_size = df_post_burnin['constant.popSize'].median()
+        values = df_post_burnin['constant.popSize']
+        median = np.median(values)
+        lower = np.percentile(values, 2.5)
+        upper = np.percentile(values, 97.5)
+        return median, lower, upper
+
     elif mode == "skyline":
-        # For skyline model, we assume 'skyline.popSize' is the column with population sizes
-        median_pop_size = np.array(df_post_burnin.filter(like='skyline.popSize').median())
-    return median_pop_size
+        skyline_df = df_post_burnin.filter(like='skyline.popSize')
+        medians = skyline_df.median().values
+        lowers = skyline_df.quantile(0.025).values
+        uppers = skyline_df.quantile(0.975).values
+        return medians, lowers, uppers
+        #return np.stack([medians, lowers, uppers], axis=1)  # shape: (n_intervals, 3)
+
+    else:
+        raise ValueError("mode must be either 'constcoal' or 'skyline'")
+    
+
+
+
 
 def get_skyline_group_boundaries(tree, num_groups=10):
     """
@@ -305,6 +322,9 @@ def tree_metrics_all_trees(path_df):
 
     combined_df[["model", "growth_model", "mutsig"]] = combined_df["tree_name"].apply(extract_model_components)
 
+    combined_df["abs_height_diff"] = np.abs(combined_df["height_diff"])
+    combined_df["abs_bl_diff"] = np.abs(combined_df["bl_diff"])
+
     return combined_df
 
 def root_height_all_trees(path_df):
@@ -361,13 +381,17 @@ def extract_tree_info(row, num_groups=10, burnin=0.1):
 
     # Extract population size estimates
     skyline_times = get_skyline_group_boundaries(tree, num_groups=num_groups)
-    skyline_medians = get_median_population_size(row["log_path_skyline"], burnin=burnin, mode="skyline")
-    coalescent_median = get_median_population_size(row["log_path_constcoal"], burnin=burnin, mode="constcoal")
+    skyline_medians, skyline_lowers, skyline_uppers = get_median_population_size(row["log_path_skyline"], burnin=burnin, mode="skyline")
+    coalescent_median, coalescent_lower, coalescent_upper = get_median_population_size(row["log_path_constcoal"], burnin=burnin, mode="constcoal")
 
     return pd.Series({
             "skyline_medians": skyline_medians,
             "skyline_times": skyline_times,
-            "coalescent_median": coalescent_median})
+            "coalescent_median": coalescent_median,
+            "skyline_lowers": skyline_lowers,
+            "skyline_uppers": skyline_uppers,
+            "coalescent_lower": coalescent_lower,
+            "coalescent_upper": coalescent_upper})
 
 
 def add_tree_information(df, num_groups = 10, burnin = 0.1):
@@ -452,6 +476,106 @@ def add_population_size_errors(node_df, tree_df):
 
 ### PLOTTING
 
+def plot_population_summary_ax(ax, skyline_all_times, skyline_all_medians, constant_all_estimates, 
+                               present_pop_size, growth_rate=None,
+                               color_exp="#a6444f", color_sky="#80557e", color_const="#397398",
+                               time_horizon=0):
+    # Compute root height
+    root_height = max([max(times) for times in skyline_all_times])
+    t_max = root_height if time_horizon == 0 else min(time_horizon, root_height)
+    t_vals = np.linspace(0, t_max, 1000)
+    N_true = present_pop_size * np.exp(-growth_rate * t_vals)
+
+    # Interpolate all skyline estimates onto a common grid
+    interpolated = []
+    for times, medians in zip(skyline_all_times, skyline_all_medians):
+        step_times = [0.0] + times[:-1]
+        step_vals = np.zeros_like(t_vals)
+        for start, end, val in zip(step_times, times, medians):
+            mask = (t_vals >= start) & (t_vals < end)
+            step_vals[mask] = val
+        step_vals[t_vals >= times[-1]] = medians[-1]
+        interpolated.append(step_vals)
+
+    interpolated = np.array(interpolated)
+    skyline_median = np.median(interpolated, axis=0)
+    skyline_lower = np.percentile(interpolated, 2.5, axis=0)
+    skyline_upper = np.percentile(interpolated, 97.5, axis=0)
+
+    # Plot
+    ax.plot(t_vals, N_true, color=color_exp, linewidth=2, label="True Population Size")
+
+    const_median = np.median(constant_all_estimates)
+    const_lower = np.percentile(constant_all_estimates, 2.5)
+    const_upper = np.percentile(constant_all_estimates, 97.5)
+    ax.hlines(const_median, 0, t_max, color=color_const, linestyle=':', label="Constant Pop. Estimate")
+    ax.fill_between(t_vals, const_lower, const_upper, color=color_const, alpha=0.2)
+
+    ax.plot(t_vals, skyline_median, color=color_sky, linestyle='--', label="Skyline Estimate")
+    ax.fill_between(t_vals, skyline_lower, skyline_upper, color=color_sky, alpha=0.2)
+    
+    ax.set_xlabel("Time before present")
+    ax.set_ylabel("Population Size")
+    ax.invert_xaxis()
+
+def plot_population_summary(path_info_df, time_horizon=0, title = ""):
+    """
+    Summary plot per condition (mutation signal × population model), showing
+    median and 95% CI for skyline and constant-coalescent estimates.
+    """
+    pop_models = ["uniform", "expgrowth_slow", "expgrowth_fast"]
+    mut_signals = ["low", "med", "high"]
+    ncols, nrows = len(pop_models), len(mut_signals)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.5 * nrows))
+
+    # Ensure axes is always 2D array
+    if nrows == 1:
+        axes = np.expand_dims(axes, axis=0)
+    if ncols == 1:
+        axes = np.expand_dims(axes, axis=1)
+
+    for i, mut_sig in enumerate(mut_signals):
+        for j, pop_model in enumerate(pop_models):
+            ax = axes[i][j]
+            subset = path_info_df[
+                (path_info_df["mutation_signal"] == mut_sig) &
+                (path_info_df["population_model"] == pop_model)
+            ]
+
+            if subset.empty:
+                continue
+
+            # Collect skyline trajectories + estimates
+            skyline_all_times = subset["skyline_times"].tolist()
+            skyline_all_medians = subset["skyline_medians"].tolist()
+            constant_all_estimates = subset["coalescent_median"].tolist()
+            present_pop_size = subset["present_pop_size"].iloc[0]
+            growth_rate = subset["growth_rate"].iloc[0]
+
+            plot_population_summary_ax(
+                ax,
+                skyline_all_times=skyline_all_times,
+                skyline_all_medians=skyline_all_medians,
+                constant_all_estimates=constant_all_estimates,
+                present_pop_size=present_pop_size,
+                growth_rate=growth_rate,
+                time_horizon=time_horizon,
+            )
+
+            if j == 0:
+                ax.set_ylabel(f"{mut_sig.capitalize()} mut.\nsignal\nPopulation Size")
+            if i == 0:
+                ax.set_title(f"{pop_model.replace('_', ' ').capitalize()}", fontsize=12)
+
+    # Add global legend
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=3)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.suptitle(title)
+    plt.show()
+
+
 def plot_population_trajectories_ax(ax, skyline_times, skyline_medians, constant_pop_estimate, 
                                      present_pop_size, growth_rate=None,
                                      color_exp="#a6444f", color_sky="#80557e", color_const="#397398",
@@ -491,7 +615,7 @@ def plot_population_trajectories_ax(ax, skyline_times, skyline_medians, constant
 
 
 
-def plot_summary_population_grid(path_info_df, num_groups=10, burnin=0.1, time_horizon = 0):
+def plot_summary_population_grid(path_info_df, num_groups=10, burnin=0.1, time_horizon = 0, title = ""):
     """
     Plots all population trajectories for all trees in a subplot grid by
     population model (columns) and mutation signal (rows).
@@ -563,7 +687,8 @@ def plot_summary_population_grid(path_info_df, num_groups=10, burnin=0.1, time_h
     # Add global legend
     handles, labels = axes[0][0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=3)
-    #fig.suptitle("Population Size Trajectories across Trees", y=1.07)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.suptitle(title)
     plt.show()
 
 
@@ -835,3 +960,127 @@ def plot_height_error_grid_scatter(df, error_col="height_abs_relative_error", x_
     plt.suptitle(title, fontsize = 20)
     plt.tight_layout()
     plt.show()
+
+
+def plot_population_summary_ax_95cf(ax, skyline_all_times, skyline_all_medians, constant_all_estimates,
+                               skyline_all_lowers, skyline_all_uppers, constant_all_lowers, constant_all_uppers,
+                               present_pop_size, growth_rate=None,
+                               color_exp="#a6444f", color_sky="#80557e", color_const="#397398",
+                               time_horizon=0, mode = 'skyline', plot_true_size = True):
+    # Compute root height
+    root_height = max([max(times) for times in skyline_all_times])
+    t_max = root_height if time_horizon == 0 else min(time_horizon, root_height)
+    t_vals = np.linspace(0, t_max, 1000)
+    N_true = present_pop_size * np.exp(-growth_rate * t_vals)
+
+    if plot_true_size:
+        ax.plot(t_vals, N_true, color=color_exp, linewidth=2, label="True Population Size")
+
+    # Interpolate all skyline estimates onto a common grid
+    def plot_population_all_trees(skyline_all_values, constant_all_values, color_sky, color_const, skyline_label, constant_label):
+        interpolated = []
+        for times, medians in zip(skyline_all_times, skyline_all_values):
+            step_times = [0.0] + times[:-1]
+            step_vals = np.zeros_like(t_vals)
+            for start, end, val in zip(step_times, times, medians):
+                mask = (t_vals >= start) & (t_vals < end)
+                step_vals[mask] = val
+            step_vals[t_vals >= times[-1]] = medians[-1]
+            interpolated.append(step_vals)
+
+        interpolated = np.array(interpolated)
+        skyline_median = np.median(interpolated, axis=0)
+        skyline_lower = np.percentile(interpolated, 2.5, axis=0)
+        skyline_upper = np.percentile(interpolated, 97.5, axis=0)
+
+        # Plot
+        const_median = np.median(constant_all_values)
+        const_lower = np.percentile(constant_all_values, 2.5)
+        const_upper = np.percentile(constant_all_values, 97.5)
+        if mode == 'constcoal':
+            ax.hlines(const_median, 0, t_max, color=color_const, linestyle=':', label=constant_label)
+            ax.fill_between(t_vals, const_lower, const_upper, color=color_const, alpha=0.2)
+        elif mode == 'skyline':
+            ax.plot(t_vals, skyline_median, color=color_sky, linestyle='--', label=skyline_label)
+            ax.fill_between(t_vals, skyline_lower, skyline_upper, color=color_sky, alpha=0.2)
+
+    plot_population_all_trees(skyline_all_medians, constant_all_estimates, color_sky, color_const, "Skyline Estimate", "Constant Estimate")
+    plot_population_all_trees(skyline_all_lowers, constant_all_lowers, "#d991b4", "#7394c2", "Skyline Estimate 95% CI", "Constant Estimate 95% CI")
+    plot_population_all_trees(skyline_all_uppers, constant_all_estimates, "#d991b4", "#7394c2", None, None)
+
+    # Repeat for upper confidence interval values
+    
+    ax.set_xlabel("Time before present")
+    ax.set_ylabel("Population Size")
+    ax.invert_xaxis()
+
+
+def plot_population_summary_95cf(path_info_df, time_horizon=0, title = "", mode = 'skyline', plot_true_size = True):
+    """
+    Summary plot per condition (mutation signal × population model), showing
+    median and 95% CI for skyline and constant-coalescent estimates.
+    """
+    pop_models = ["uniform", "expgrowth_slow", "expgrowth_fast"]
+    mut_signals = ["low", "med", "high"]
+    ncols, nrows = len(pop_models), len(mut_signals)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.5 * nrows))
+
+    # Ensure axes is always 2D array
+    if nrows == 1:
+        axes = np.expand_dims(axes, axis=0)
+    if ncols == 1:
+        axes = np.expand_dims(axes, axis=1)
+
+    for i, mut_sig in enumerate(mut_signals):
+        for j, pop_model in enumerate(pop_models):
+            ax = axes[i][j]
+            subset = path_info_df[
+                (path_info_df["mutation_signal"] == mut_sig) &
+                (path_info_df["population_model"] == pop_model)
+            ]
+
+            if subset.empty:
+                continue
+
+            # Collect skyline trajectories + estimates
+            skyline_all_times = subset["skyline_times"].tolist()
+            skyline_all_medians = subset["skyline_medians"].tolist()
+            constant_all_estimates = subset["coalescent_median"].tolist()
+            present_pop_size = subset["present_pop_size"].iloc[0]
+            growth_rate = subset["growth_rate"].iloc[0]
+            skyline_all_lowers = subset["skyline_lowers"].tolist()
+            skyline_all_uppers = subset["skyline_uppers"].tolist()
+            constant_all_lowers = subset["coalescent_lower"].tolist()
+            constant_all_uppers = subset["coalescent_upper"].tolist()
+
+
+            plot_population_summary_ax_95cf(
+                ax,
+                skyline_all_times=skyline_all_times,
+                skyline_all_medians=skyline_all_medians,
+                constant_all_estimates=constant_all_estimates,
+                skyline_all_lowers=skyline_all_lowers,
+                skyline_all_uppers=skyline_all_uppers,
+                constant_all_lowers=constant_all_lowers,
+                constant_all_uppers=constant_all_uppers,
+                present_pop_size=present_pop_size,
+                growth_rate=growth_rate,
+                time_horizon=time_horizon,
+                mode = mode,
+                plot_true_size = plot_true_size,
+            )
+
+
+            if j == 0:
+                ax.set_ylabel(f"{mut_sig.capitalize()} mut.\nsignal\nPopulation Size")
+            if i == 0:
+                ax.set_title(f"{pop_model.replace('_', ' ').capitalize()}", fontsize=12)
+
+    # Add global legend
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=3)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.suptitle(title)
+    plt.show()
+
