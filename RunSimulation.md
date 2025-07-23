@@ -20,6 +20,14 @@ To run beast, first a list of all beast xml files is needed. This list is genera
 
 Afterwards Beast is run on all xml files by running `run_beast_array.sh` (around 16h).
 
+If you want to run Beast several times to combine the runs later, I copied the xml files to a new directory and reran Beast with a new seed (adapt `run_beast_array.sh`). To copy run:
+```
+rsync -av --include='*/' --include='*.xml' --exclude='*' \
+/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/ \
+/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results_2/
+````
+
+
 ### Create summary trees of runs with sufficient ESS
 The `check_mcmc.sh` script select all trees that have a sufficiently high ESS (above $200$) for all estimated parameters and runs treeannotator on all of them with a burnin of $10\%$. 
 
