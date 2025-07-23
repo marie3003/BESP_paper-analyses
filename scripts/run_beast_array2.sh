@@ -5,7 +5,7 @@
 #SBATCH --time=16:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=8G
-#SBATCH --array=1-1800
+#SBATCH --array=1-2
 #SBATCH --partition=standard
 
 module load stack/2024-06
@@ -26,9 +26,11 @@ REL_PATH=$(dirname "$(realpath --relative-to=/cluster/work/stadler/beckermar/BES
 # Determine new output folder and prefix path
 OUT_XML_BASE="/cluster/work/stadler/beckermar/BESP_paper-analyses/pop_size_simulations/simulation_results_2/${REL_PATH%.xml}"
 
+echo "Running BEAST with output prefix: $OUT_XML_BASE"
+
 # Create output directory
 mkdir -p "$(dirname "$OUT_XML_BASE")"
 
 # Run BEAST using XML_FILE as input, but redirect output files to new location via -prefix
-beast -seed 43 -prefix "$OUT_XML_BASE" "$XML_FILE"
+beast -seed 43 -working -prefix "$OUT_XML_BASE" "$XML_FILE"
 
