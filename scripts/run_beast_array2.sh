@@ -26,7 +26,7 @@ echo "location of XML file: $XML_FILE"
 REL_PATH=$(dirname "$(realpath --relative-to=/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results "$XML_FILE")")
 
 # Determine new output folder and prefix path
-OUT_XML_BASE="/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results_2/${REL_PATH%.xml}"
+OUT_XML_BASE="/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results_2/${REL_PATH%.xml}/"
 
 echo "Running BEAST with output prefix: $OUT_XML_BASE"
 
