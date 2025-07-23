@@ -16,11 +16,11 @@ Before the alignment can be generated, a list of all trees is needed. This is do
 For all simulated trees, sequences are generated based on a specified mutation rate and used as an input to Beast. Beast is then run with a constant coalescent population size prior and a Skyline Coalescent prior. To generate the xml files needed as input to Beast, `scripts/MakeBEASTXML.py` can be one. It can be run running `scripts/run_make_beast_xml.sh`. It uses templates specified in the `results/pop_size_simulations/templates` folder and adds parameters specified in the config files that can be found in the `results/pop_size_simulations/config` folder. `MakeBEASTXML.py` subsamples sequences created before with SeqGen and snp sites.
 
 ### Run Beast
-To run beast, first a list of all beast xml files is needed. This list is generated with `find ../results/pop_size_simulations/simulation_results -name "*.xml" > xml_list.txt` run in the `scripts` folder.
+To run beast, first a list of all beast xml files is needed. This list is generated with `find ../results/pop_size_simulations/simulation_results_2 -name "*.xml" > xml_list.txt` run in the `scripts` folder.
 
 Afterwards Beast is run on all xml files by running `run_beast_array.sh` (around 16h).
 
-If you want to run Beast several times to combine the runs later, I copied the xml files to a new directory and reran Beast with a new seed (adapt `run_beast_array.sh`). To copy run:
+If you want to run Beast several times to combine the runs later, I copied the xml files to a new directory and reran Beast with a new seed (adapt `run_beast_array.sh`). A new `xml_list.txt` file needs to be specified as well. To copy run:
 ```
 rsync -av --include='*/' --include='*.xml' --exclude='*' \
 /cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/ \

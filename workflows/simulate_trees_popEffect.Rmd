@@ -143,12 +143,23 @@ scp -r beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analys
 
 rsync -avz beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
 
-rsync -avz beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/independent_homochronous /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
+rsync -avz -e ssh \
+  --include='*/' \
+  --include='*.trees' \
+  --exclude='*' \
+  beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/independent_homochronous/ \
+  /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/independent_homochronous
 
 
 rsync -av --include='*/' --include='*.log' --include='*.tree' --include='*.xml' --exclude='*' \
 beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
 
 scp beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/scripts/successful_mcmc_runs.csv /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/scripts
+
+
+XML_FILE=/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/constcoal/uniform/lowmutsig$ pwd
+/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/constcoal/uniform/lowmutsig/constcoal_homochronous_uniform_lowmutsig.T0.xml
+REL_PATH=$(dirname "$(realpath --relative-to=/Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/simulation_results "$XML_FILE")")
+OUT_XML_BASE="/cluster/work/stadler/beckermar/BESP_paper-analyses/pop_size_simulations/simulation_results_2/${REL_PATH%.xml}"
 
 scp beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/skyline/expgrowth_fast/highmutsig/combined_alignments.fasta /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/skyline/expgrowth_fast/highmutsig

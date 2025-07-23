@@ -322,8 +322,8 @@ def tree_metrics_all_trees(path_df):
 
     combined_df[["model", "growth_model", "mutsig"]] = combined_df["tree_name"].apply(extract_model_components)
 
-    combined_df["abs_height_diff"] = np.abs(combined_df["height_diff"])
-    combined_df["abs_bl_diff"] = np.abs(combined_df["bl_diff"])
+    combined_df["height_abs_diff"] = np.abs(combined_df["height_diff"])
+    combined_df["bl_abs_diff"] = np.abs(combined_df["bl_diff"])
 
     return combined_df
 

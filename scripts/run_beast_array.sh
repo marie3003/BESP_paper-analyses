@@ -15,10 +15,10 @@ module load beast1/1.10.4
 module load libbeagle
 
 # Path to the list of all XML files
-FILE_LIST=/cluster/work/stadler/beckermar/BESP_paper-analyses/scripts/xml_list_2.txt
+FILE_LIST=/cluster/work/stadler/beckermar/BESP_paper-analyses/scripts/xml_list_3.txt
 
 # Get the XML file corresponding to the current task ID
 XML_FILE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $FILE_LIST)
 
 # Run BEAST on that file
-beast -overwrite -seed 43 -working "$XML_FILE"
+beast -overwrite -seed 44 -working "$XML_FILE"
