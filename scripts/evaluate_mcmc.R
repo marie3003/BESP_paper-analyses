@@ -22,7 +22,8 @@ output_file <- file.path(script_dir, "successful_mcmc_runs.csv")
 log_files <- list.files(parent_folder, pattern = "\\.log$", full.names = TRUE, recursive = TRUE)
 
 # Evaluate each log file
-results <- do.call(rbind, lapply(log_files, mcmc_successful))
+results <- do.call(rbind, mclapply(log_files, mcmc_successful, mc.cores = 16))
+#results <- do.call(rbind, lapply(log_files, mcmc_successful))
 
 # Write result to CSV if any successful runs
 if (!is.null(results)) {
