@@ -407,6 +407,7 @@ def calculate_population_size_error(
         "true_pop_size": true_pop_size,
         "est_pop_size": est_pop_size,
         "diff_pop_size": error,
+        "abs_diff_pop_size": np.abs(error),
         "rel_diff_pop_size": relative_error,
         "abs_rel_diff_pop_size": abs_relative_error
     }
@@ -716,18 +717,32 @@ def plot_tree_comparison(branch_length_df):
     plt.grid(True, which='both', linestyle=':', linewidth=0.5)
     plt.show()
 
-def plot_height_errors_by_time_bin(ax, df_sub, y_max, bins=10, error_col="height_abs_relative_error"):
+def plot_height_errors_by_time_bin(ax, df_sub, y_max, bins=10, error_col="height_abs_relative_error", x_col = 'height_sim'):
     # Bin simulated heights (time since present)
     df_sub = df_sub.copy()
-    df_sub["time_bin"] = pd.cut(df_sub["height_sim"], bins=np.linspace(0, y_max, bins + 1), include_lowest=True)
+
+    if x_col == 'height_sim':
+        # Regular bin edges up to 1000
+        bin_edges = list(np.linspace(0, y_max, bins + 1))  # e.g., bins=10 → edges 0, 100, ..., 1000
+
+        # Extend with one final bin to cover max value
+        max_height = df_sub["height_sim"].max()
+        if max_height > y_max:
+            bin_edges.append(max_height + 1e-6)  # slight buffer to include max in final bin
+    else:
+        min_val = df_sub[x_col].min()
+        max_val = df_sub[x_col].max()
+        bin_edges = list(np.linspace(min_val, max_val, bins + 1))
+    
+    df_sub["bin"] = pd.cut(df_sub[x_col], bins=bin_edges, include_lowest=True)
 
     # Drop NaNs
-    df_sub = df_sub.dropna(subset=["time_bin", error_col])
+    df_sub = df_sub.dropna(subset=["bin", error_col])
 
     # Plot
     sns.boxplot(
         data=df_sub,
-        x="time_bin",
+        x="bin",
         y=error_col,
         hue="model",
         ax=ax,
@@ -737,13 +752,16 @@ def plot_height_errors_by_time_bin(ax, df_sub, y_max, bins=10, error_col="height
     
     # Formatting
     #ax.set_ylim(-5, 5)
-    ax.set_xlabel("Time before present")
-    tick_labels = [f"{int(interval.left)}-{int(interval.right)}" for interval in df_sub["time_bin"].cat.categories]
+    if x_col == 'height_sim':
+        ax.set_xlabel("Time before present")
+    else:
+        ax.set_xlabel(x_col)
+    tick_labels = [f"{int(interval.left)}-{int(interval.right)}" for interval in df_sub["bin"].cat.categories]
     ax.set_xticks(range(len(tick_labels)))
     ax.set_xticklabels(tick_labels, rotation=45)
     ax.legend(title="Model", loc="upper right")
 
-def plot_height_error_grid(df, y_max, bins=10, error_col="height_abs_relative_error", title = ""):
+def plot_height_error_grid(df, y_max = 1000, bins=10, error_col="height_abs_relative_error", x_col = 'height_sim', title = "", only_skyline = False):
 
     if error_col.startswith("bl"):
         df = df.dropna()
@@ -752,6 +770,9 @@ def plot_height_error_grid(df, y_max, bins=10, error_col="height_abs_relative_er
 
     mutsig_order = ["low", "med", "high"]
     growth_model_order = ["uniform", "expgrowth_slow", "expgrowth_fast"]
+
+    if only_skyline:
+        df = df[df.model == 'skyline']
     
     fig, axes = plt.subplots(nrows=len(mutsig_order), ncols=len(growth_model_order), figsize=(18, 10), sharey=False)
 
@@ -759,7 +780,7 @@ def plot_height_error_grid(df, y_max, bins=10, error_col="height_abs_relative_er
         for j, growth_model in enumerate(growth_model_order):
             ax = axes[i, j]
             df_sub = df[(df["mutsig"] == mutsig) & (df["growth_model"] == growth_model)]
-            plot_height_errors_by_time_bin(ax, df_sub, y_max=y_max, bins=bins, error_col=error_col)
+            plot_height_errors_by_time_bin(ax, df_sub, y_max=y_max, bins=bins, error_col=error_col, x_col = x_col)
             
             if i == 0:
                 ax.set_title(growth_model.replace("expgrowth_", "exp-growth ").capitalize())
@@ -771,13 +792,13 @@ def plot_height_error_grid(df, y_max, bins=10, error_col="height_abs_relative_er
     plt.show()
 
 
-def plot_height_errors_scatter_by_time(ax, df_sub, error_col="height_abs_relative_error", y_range = (0,10)):
+def plot_height_errors_scatter_by_time(ax, df_sub, error_col="height_abs_relative_error", x_col = "height_sim", y_range = (0,10)):
     df_sub = df_sub.copy()
     df_sub = df_sub.dropna(subset=["height_sim", error_col])
 
     sns.scatterplot(
         data=df_sub,
-        x="height_sim",
+        x=x_col,
         y=error_col,
         hue="model",
         palette=["#a6444f", "#397398"],
@@ -789,10 +810,13 @@ def plot_height_errors_scatter_by_time(ax, df_sub, error_col="height_abs_relativ
 
     # Formatting
     ax.set_ylim(y_range)
-    ax.set_xlabel("Time before present")
+    if x_col == "height_sim":
+        ax.set_xlabel("Time before present")
+    else:
+        ax.set_xlabel(x_col)
     ax.legend(title="Model", loc="upper right")
 
-def plot_height_error_grid_scatter(df, error_col="height_abs_relative_error", title = "", y_range = (0, 10), x_range = ()):
+def plot_height_error_grid_scatter(df, error_col="height_abs_relative_error", x_col = 'height_sim', title = "", y_range = (0, 10), x_range = ()):
     
     if error_col.startswith("bl"):
         df = df.dropna()
@@ -808,7 +832,7 @@ def plot_height_error_grid_scatter(df, error_col="height_abs_relative_error", ti
         for j, growth_model in enumerate(growth_model_order):
             ax = axes[i, j]
             df_sub = df[(df["mutsig"] == mutsig) & (df["growth_model"] == growth_model)]
-            plot_height_errors_scatter_by_time(ax, df_sub, error_col=error_col, y_range = y_range)
+            plot_height_errors_scatter_by_time(ax, df_sub, error_col=error_col, x_col = x_col, y_range = y_range)
             
             if i == 0:
                 ax.set_title(growth_model.replace("expgrowth_", "exp-growth ").capitalize())
@@ -818,4 +842,3 @@ def plot_height_error_grid_scatter(df, error_col="height_abs_relative_error", ti
     plt.suptitle(title, fontsize = 20)
     plt.tight_layout()
     plt.show()
-

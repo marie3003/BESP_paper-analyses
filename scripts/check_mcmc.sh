@@ -2,7 +2,7 @@
 #SBATCH --job-name=check_mcmc
 #SBATCH --output=logs/check_mcmc.out
 #SBATCH --error=logs/check_mcmc.err
-#SBATCH --time=00:10:00
+#SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=2G
 #SBATCH --partition=standard
