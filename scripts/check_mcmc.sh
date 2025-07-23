@@ -26,7 +26,7 @@ cat << EOF > run_summary_array.sh
 #SBATCH --job-name=create_summary_trees
 #SBATCH --output=logs/summary_%A_%a.out
 #SBATCH --error=logs/summary_%A_%a.err
-#SBATCH --time=00:30:00
+#SBATCH --time=00:45:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=4G
 #SBATCH --partition=standard

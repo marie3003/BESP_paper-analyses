@@ -108,7 +108,7 @@ def process_results(input_csv, present_pop_size = 2000, growth_rates = [0, 0.001
 
     return pivoted
 
-def get_mean_population_size(log_path, burnin=0.1, mode = "constcoal"):
+def get_median_population_size(log_path, burnin=0.1, mode = "constcoal"):
     """
     Parses a BEAST log file and computes the average population size 
     after discarding burn-in.
@@ -130,11 +130,11 @@ def get_mean_population_size(log_path, burnin=0.1, mode = "constcoal"):
     df_post_burnin = df.iloc[burnin_rows:]
 
     if mode == "constcoal":
-        mean_pop_size = df_post_burnin['constant.popSize'].mean()
+        median_pop_size = df_post_burnin['constant.popSize'].median()
     elif mode == "skyline":
         # For skyline model, we assume 'skyline.popSize' is the column with population sizes
-        mean_pop_size = np.array(df_post_burnin.filter(like='skyline.popSize').mean())
-    return mean_pop_size
+        median_pop_size = np.array(df_post_burnin.filter(like='skyline.popSize').median())
+    return median_pop_size
 
 def get_skyline_group_boundaries(tree, num_groups=10):
     """
@@ -361,13 +361,13 @@ def extract_tree_info(row, num_groups=10, burnin=0.1):
 
     # Extract population size estimates
     skyline_times = get_skyline_group_boundaries(tree, num_groups=num_groups)
-    skyline_means = get_mean_population_size(row["log_path_skyline"], burnin=burnin, mode="skyline")
-    coalescent_mean = get_mean_population_size(row["log_path_constcoal"], burnin=burnin, mode="constcoal")
+    skyline_medians = get_median_population_size(row["log_path_skyline"], burnin=burnin, mode="skyline")
+    coalescent_median = get_median_population_size(row["log_path_constcoal"], burnin=burnin, mode="constcoal")
 
     return pd.Series({
-            "skyline_means": skyline_means,
+            "skyline_medians": skyline_medians,
             "skyline_times": skyline_times,
-            "coalescent_mean": coalescent_mean})
+            "coalescent_median": coalescent_median})
 
 
 def add_tree_information(df, num_groups = 10, burnin = 0.1):
@@ -379,24 +379,24 @@ def calculate_population_size_error(
     present_pop_size,
     growth_rate,
     skyline_times=None,
-    skyline_means=None,
-    coalescent_mean=None
+    skyline_medians=None,
+    coalescent_median=None
 ):
     # 1. True population size at time t
     true_pop_size = present_pop_size * np.exp(-growth_rate * t)
 
     # 2. Estimated population size
-    if coalescent_mean is not None:
-        est_pop_size = coalescent_mean
+    if coalescent_median is not None:
+        est_pop_size = coalescent_median
 
-    elif skyline_times is not None and skyline_means is not None:
+    elif skyline_times is not None and skyline_medians is not None:
 
         # Use np.searchsorted to find the correct interval index
         interval_index = np.searchsorted(skyline_times, t, side="left") - 1
-        est_pop_size = skyline_means[interval_index]
+        est_pop_size = skyline_medians[interval_index]
 
     else:
-        raise ValueError("Either coalescent_mean or skyline_times + skyline_means must be provided.")
+        raise ValueError("Either coalescent_median or skyline_times + skyline_median must be provided.")
 
     # 3. Compute errors
     error = (est_pop_size - true_pop_size)
@@ -434,9 +434,9 @@ def add_population_size_errors(node_df, tree_df):
                 t=row["height_sim"],
                 present_pop_size=row["present_pop_size"],
                 growth_rate=row["growth_rate"],
-                coalescent_mean=row["coalescent_mean"] if row["model"] == "constcoal" else None,
+                coalescent_median=row["coalescent_median"] if row["model"] == "constcoal" else None,
                 skyline_times=row["skyline_times"] if row["model"] == "skyline" else None,
-                skyline_means=row["skyline_means"] if row["model"] == "skyline" else None
+                skyline_medians=row["skyline_medians"] if row["model"] == "skyline" else None
             )
         ),
         axis=1
@@ -452,7 +452,7 @@ def add_population_size_errors(node_df, tree_df):
 
 ### PLOTTING
 
-def plot_population_trajectories_ax(ax, skyline_times, skyline_means, constant_pop_estimate, 
+def plot_population_trajectories_ax(ax, skyline_times, skyline_medians, constant_pop_estimate, 
                                      present_pop_size, growth_rate=None,
                                      color_exp="#a6444f", color_sky="#80557e", color_const="#397398",
                                      alpha=0.4, label_prefix="", first_plot=True, time_horizon=0):
@@ -465,7 +465,7 @@ def plot_population_trajectories_ax(ax, skyline_times, skyline_means, constant_p
     # Stepwise skyline
     skyline_start_times = [0.0] + skyline_times[:-1]
     step_times, step_values = [], []
-    for start, end, value in zip(skyline_start_times, skyline_times, skyline_means):
+    for start, end, value in zip(skyline_start_times, skyline_times, skyline_medians):
         if start > t_max:
             break
         end = min(end, t_max)
@@ -475,14 +475,14 @@ def plot_population_trajectories_ax(ax, skyline_times, skyline_means, constant_p
     if first_plot:
         ax.plot(t_vals, N_true, color=color_exp, alpha=1, linewidth= 2, label="True Population Size")
         ax.hlines(constant_pop_estimate, 0, t_max, color=color_const, linestyle=':', 
+              alpha=alpha, label = "Constant Pop. Estimate")
+        ax.plot(step_times, step_values, drawstyle='steps-post', linestyle='--', color=color_sky, 
+            alpha=alpha, label="Skyline Estimate")
+    else:
+        ax.hlines(constant_pop_estimate, 0, t_max, color=color_const, linestyle=':', 
               alpha=alpha)
         ax.plot(step_times, step_values, drawstyle='steps-post', linestyle='--', color=color_sky, 
             alpha=alpha)
-    else:
-        ax.hlines(constant_pop_estimate, 0, t_max, color=color_const, linestyle=':', 
-              alpha=alpha, label="Constant Pop. Estimate")
-        ax.plot(step_times, step_values, drawstyle='steps-post', linestyle='--', color=color_sky, 
-            alpha=alpha, label="Skyline Estimate")
 
     if first_plot:
         ax.set_xlabel("Time before present")
@@ -520,37 +520,30 @@ def plot_summary_population_grid(path_info_df, num_groups=10, burnin=0.1, time_h
 
     for idx, row in path_info_df.iterrows():
         
-        tree_path_constcoal = row["tree_path_constcoal"]
-        tree_path_skyline = row["tree_path_skyline"]
-        log_path_constcoal = row["log_path_constcoal"]
-        log_path_skyline = row["log_path_skyline"]
         pop_model = row["population_model"]
         mut_sig = row["mutation_signal"]
         present_pop_size = row["present_pop_size"]
         growth_rate = row["growth_rate"]
         tree_index = row["tree_index"]
 
-
         row_idx = mut_signals.index(mut_sig)
         col_idx = pop_models.index(pop_model)
         ax = axes[row_idx][col_idx]
-
-        # Parse data
-        tree = Phylo.read(tree_path_skyline, "nexus")
-        skyline_times = get_skyline_group_boundaries(tree, num_groups=num_groups)
-        skyline_means = get_mean_population_size(log_path_skyline, burnin=burnin, mode="skyline")
-        coalescent_mean = get_mean_population_size(log_path_constcoal, burnin=burnin, mode="constcoal")
 
         if tree_index < previous_tree_index:
             first_plot = True
         previous_tree_index = tree_index
 
+        skyline_times = row["skyline_times"]
+        skyline_medians = row["skyline_medians"]
+        coalescent_median = row["coalescent_median"]
+
         # Plot into axis
         plot_population_trajectories_ax(
             ax,
             skyline_times=skyline_times,
-            skyline_means=skyline_means,
-            constant_pop_estimate=coalescent_mean,
+            skyline_medians=skyline_medians,
+            constant_pop_estimate=coalescent_median,
             present_pop_size=present_pop_size,
             growth_rate=growth_rate,
             alpha=0.5,  # overlay transparency
