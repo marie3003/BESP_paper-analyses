@@ -2,11 +2,11 @@
 #SBATCH --job-name=combine_runs
 #SBATCH --output=logs/combine_runs_%A_%a.out
 #SBATCH --error=logs/combine_runs_%A_%a.err
-#SBATCH --time=00:30:00
+#SBATCH --time=00:05:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=4G
 #SBATCH --partition=standard
-#SBATCH --array=1-2  # <-- Adjust to match number of lines - 1 in xml_list.txt
+#SBATCH --array=1-1800  # <-- Adjust to match number of lines - 1 in xml_list.txt
 
 # Load modules
 module load stack/2024-06

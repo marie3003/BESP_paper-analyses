@@ -1,7 +1,8 @@
 library(coda)
 library(beastio)
 
-mcmc_successful <- function(log_path, burnin_frac = 0.1, cutoff = 200) {
+# set burnin to 0 instead of 0.1 if run on combined log files and adapt parent folder
+mcmc_successful <- function(log_path, burnin_frac = 0, cutoff = 200) {
   mcmc <- readLog(log_path, burnin = burnin_frac)
   low_ess <- checkESS(mcmc, cutoff = cutoff, value = TRUE)
   if (length(low_ess) == 0) {
@@ -15,7 +16,7 @@ mcmc_successful <- function(log_path, burnin_frac = 0.1, cutoff = 200) {
 args <- commandArgs(trailingOnly = FALSE)
 script.path <- normalizePath(sub("--file=", "", args[grep("--file=", args)]))
 script_dir <- dirname(script.path)
-parent_folder <- file.path(script_dir, "../results/pop_size_simulations/simulation_results")
+parent_folder <- file.path(script_dir, "../results/pop_size_simulations/simulation_results_combined")
 output_file <- file.path(script_dir, "successful_mcmc_runs.csv")
 
 # Find all .log files recursively
