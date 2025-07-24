@@ -1,5 +1,6 @@
 library(coda)
 library(beastio)
+library(parallel)
 
 # set burnin to 0 instead of 0.1 if run on combined log files and adapt parent folder
 mcmc_successful <- function(log_path, burnin_frac = 0, cutoff = 200) {
