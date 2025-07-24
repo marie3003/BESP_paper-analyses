@@ -50,7 +50,8 @@ base_name=\$(basename "\$trees_path" .trees)
 output_path="\$out_dir/\${base_name}.tree"
 
 echo "Annotating \$trees_path with burnin \$burnin"
-treeannotator -burnin "\$burnin" -heights median "\$trees_path" "\$output_path"
+#treeannotator -burnin "\$burnin" -heights median "\$trees_path" "\$output_path"
+treeannotator -heights median "\$trees_path" "\$output_path"
 EOF
 
 chmod +x run_summary_array.sh
