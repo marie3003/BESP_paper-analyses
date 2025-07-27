@@ -15,11 +15,13 @@ __pycache__
 BESP_paper-analyses.Rproj
 renv/
 results/pop_size_simulations/simulation_results/
+results/pop_size_simulations/simulation_results_combined/
 results/pop_size_simulations/simulation_results_old/
 results/pop_size_simulations/simulation_results_new/
 results/pop_size_simulations/simulation_results_2/
 results/pop_size_simulations/independent_homochronous/
 results/pop_size_simulations/linear_constant/
+results/pop_size_simulations/evaluation
 results/test/
 scripts/CreateSamplingTimes.R
 workflows/old_code.py
