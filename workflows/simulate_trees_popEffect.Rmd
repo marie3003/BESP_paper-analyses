@@ -152,14 +152,11 @@ rsync -avz -e ssh \
 
 
 rsync -av --include='*/' --include='*.log' --include='*.tree' --include='*.xml' --exclude='*' \
-beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
+beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results_combined /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/
 
-scp beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/scripts/successful_mcmc_runs.csv /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/scripts
+scp beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/scripts/successful_combined_runs.csv /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/scripts
 
 
-XML_FILE=/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/constcoal/uniform/lowmutsig$ pwd
-/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/constcoal/uniform/lowmutsig/constcoal_homochronous_uniform_lowmutsig.T0.xml
-REL_PATH=$(dirname "$(realpath --relative-to=/Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/simulation_results "$XML_FILE")")
-OUT_XML_BASE="/cluster/work/stadler/beckermar/BESP_paper-analyses/pop_size_simulations/simulation_results_2/${REL_PATH%.xml}"
+logcombiner -burnin 0.1 -log /cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/skyline/expgrowth_fast/highmutsig/skyline_homochronous_expgrowth_fast_highmutsig.T0.log -log /cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results_2/homochronous_independent/skyline/expgrowth_fast/highmutsig/skyline_homochronous_expgrowth_fast_highmutsig.T0.log -log /cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results_3/homochronous_independent/skyline/expgrowth_fast/highmutsig/skyline_homochronous_expgrowth_fast_highmutsig.T0.log -o combined.log
 
 scp beckermar@euler.ethz.ch:/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/skyline/expgrowth_fast/highmutsig/combined_alignments.fasta /Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses/results/pop_size_simulations/simulation_results/homochronous_independent/skyline/expgrowth_fast/highmutsig

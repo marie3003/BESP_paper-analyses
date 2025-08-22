@@ -13,7 +13,7 @@ __pycache__
 
 .Rprofile
 BESP_paper-analyses.Rproj
-renv/
+renv/library/
 results/pop_size_simulations/simulation_results/
 results/pop_size_simulations/simulation_results_combined/
 results/pop_size_simulations/simulation_results_old/
