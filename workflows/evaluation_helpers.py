@@ -4,6 +4,7 @@ from io import StringIO
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib import gridspec
 
 import seaborn as sns
 
@@ -755,7 +756,7 @@ def plot_population_summary(path_info_df, time_horizon=0, title = "", y_range = 
             )   
 
             if j == 0:
-                ax.set_ylabel(f"{mut_sig.capitalize()} mut.\nsignal\nPopulation Size")
+                ax.set_ylabel(f"{mut_sig.capitalize()} mut. signal\nPopulation Size")
             if i == 0:
                 ax.set_title(f"{pop_model.replace('_', ' ').capitalize()}", fontsize=12)
 
@@ -901,7 +902,6 @@ def plot_summary_population_grid(path_info_df, num_groups=10, burnin=0.1, time_h
     plt.suptitle(title)
     plt.show()
 
-
 def boxplot_branch_length_errors(df_complete, metric = "bl_abs_relative_error", title= "", logscale=True, plot_type = 'box'):
 
     if metric.startswith("bl"):
@@ -976,7 +976,9 @@ def boxplot_branch_length_errors(df_complete, metric = "bl_abs_relative_error", 
         title="Model",
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
-        frameon=False
+        frameon=False,
+        fontsize = 12,
+        title_fontsize = 13
     )
 
     # Log scale and styling
@@ -984,18 +986,18 @@ def boxplot_branch_length_errors(df_complete, metric = "bl_abs_relative_error", 
         ax.set_yscale("log")
     else:
         ax.set_ylim(-5, 10)
-    ax.set_ylabel(f"Error (log scale, {metric})")
+    ax.set_ylabel(f"Error (log scale, {metric})", fontsize=12)
     ax.set_xlabel("")
     ax.set_xticks(range(len(condition_order)))
     ax.set_xticklabels(
-        [cond.split("/")[1].replace("mutsig", "") for cond in condition_order], rotation=0
+        [cond.split("/")[1].replace("mutsig", "") for cond in condition_order], rotation=0, fontsize = 12
     )
 
     # Add growth model labels below
     for i, growth_model in enumerate(growth_model_order):
         mid = i * 3 + 1  # middle of 3 mutation signal blocks
         label = growth_model.replace("expgrowth_", "exp-growth ").capitalize()
-        ax.text(mid, -0.08, label, ha='center', va='top', fontsize=10,
+        ax.text(mid, -0.08, label, ha='center', va='top', fontsize=12,
                 transform=ax.get_xaxis_transform())
 
     # Tighten layout
@@ -1514,18 +1516,20 @@ def plot_bl_vs_popsize_error_timecoloring_dualmodel(df, bin_width=50, time_col="
                 ax.set_ylim(y_range)
 
             if i == 0:
-                ax.set_title(growth_model.replace("expgrowth_", "exp-growth ").capitalize())
+                ax.set_title(growth_model.replace("expgrowth_", "exp-growth ").capitalize(), fontsize = 16)
             if j == 0:
-                ax.set_ylabel(f"{mutsig} mutation signal\n{bl_error_col}")
+                ax.set_ylabel(f"{mutsig} mut. signal\n{bl_error_col}", fontsize=14)
             else:
-                ax.set_ylabel(bl_error_col)
+                ax.set_ylabel(bl_error_col, fontsize=14)
 
             ax.axhline(0, color="gray", linestyle="--", linewidth=1)
             ax.axvline(0, color="gray", linestyle="--", linewidth=1)
-            ax.set_xlabel(pop_error_col)
+            ax.set_xlabel(pop_error_col, fontsize= 14)
 
-            if i == 0 and j == 0:
-                ax.legend(title="Model", frameon=False)
+            ax.tick_params(axis="both", labelsize=12)
+
+            #if i == 0 and j == 0:
+            #    ax.legend(title="Model", frameon=False)
 
             # Save for colorbar ticks
             if (i, j) == (0, 0):  # Only once
@@ -1547,7 +1551,8 @@ def plot_bl_vs_popsize_error_timecoloring_dualmodel(df, bin_width=50, time_col="
     cbar_const = plt.colorbar(sm_const, cax=cbar_ax_const)
     cbar_const.set_ticks(tick_indices)
     cbar_const.set_ticklabels(tick_labels)
-    cbar_const.set_label("Time (Before Present) — constcoal", rotation=270, labelpad=15)
+    cbar_const.ax.tick_params(labelsize=12) 
+    cbar_const.set_label("Time (Before Present) — constcoal", rotation=270, labelpad=15, fontsize = 14)
 
     # skyline colorbar (right side)
     sm_sky = plt.cm.ScalarMappable(cmap=model_cmaps["skyline"], norm=plt.Normalize(vmin=0, vmax=len(bin_centers)-1))
@@ -1555,7 +1560,8 @@ def plot_bl_vs_popsize_error_timecoloring_dualmodel(df, bin_width=50, time_col="
     cbar_sky = plt.colorbar(sm_sky, cax=cbar_ax_sky)
     cbar_sky.set_ticks(tick_indices)
     cbar_sky.set_ticklabels(tick_labels)
-    cbar_sky.set_label("Time (Before Present) — skyline", rotation=270, labelpad=15)
+    cbar_sky.ax.tick_params(labelsize=12) 
+    cbar_sky.set_label("Time (Before Present) — skyline", rotation=270, labelpad=15, fontsize = 14)
 
 
     plt.show()
@@ -1736,8 +1742,23 @@ def plot_combined_population_and_error(df_population, df_error,
     growth_model_order = ["uniform", "expgrowth_slow", "expgrowth_fast"]
     nrows, ncols = len(mutsig_order) * 2, len(growth_model_order)  # double rows (pop + error)
 
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(5 * ncols, 2.5 * nrows), gridspec_kw={'hspace': 1.2, 'wspace': 0.6})
+    row_heights = [1, 1, 0.3, 1, 1, 0.3, 1, 1]  # 0.3 acts as a spacer row
 
+    fig = plt.figure(figsize=(5*ncols, 2.5*nrows))
+    gs = gridspec.GridSpec(len(row_heights), ncols, height_ratios=row_heights, hspace=0.6, wspace=0.6)
+
+    axes = []
+    for r in range(0, len(row_heights)):
+        row_axes = []
+        for c in range(ncols):
+            if row_heights[r] > 0.5:  # only create axes for real rows, skip spacer rows
+                row_axes.append(fig.add_subplot(gs[r, c]))
+            else:
+                row_axes.append(None)
+        axes.append(row_axes)
+
+    
+        
     # Ensure axes is 2D
     axes = np.atleast_2d(axes)
 
@@ -1755,8 +1776,11 @@ def plot_combined_population_and_error(df_population, df_error,
             ].copy()
 
             # Axes
-            ax_pop = axes[2*i, j]
-            ax_err = axes[2*i + 1, j]
+            # Axes (use stride-3 to skip spacer rows)
+            row_base = i * 3
+            ax_pop = axes[row_base][j]
+            ax_err = axes[row_base + 1][j]
+
 
             # -- TOP: Population size
             if not subset_pop.empty:
@@ -1829,5 +1853,6 @@ def plot_combined_population_and_error(df_population, df_error,
     plt.suptitle("Population Size & Branch Length Error Over Time", fontsize=18)
     #plt.tight_layout(rect=[0, 0, 1, 0.96], pad=1.0)
     plt.show()
+
 
 

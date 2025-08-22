@@ -1,173 +1,65 @@
-# Jointly inferring the dynamics of population size and sampling intensity from molecular sequences: BESP analyses
+# Impact of molecular signal and population model assumptions on the estimation of node heights in time-resolved phylogenetic trees.
 
-### KV Parag, L du Plessis and OG Pybus
+This repository contains the simulation study which is the second part of this project.
+
+## Abstract
+
+Time-calibrated phylogenetic trees provide critical insights into pathogen evolution, transmission, and epidemiology, but their accuracy depends on both the availability of mutational signal and the choice of coalescent priors. In this study, we investigated how assumptions about population size models affect estimates of node heights in dated phylogenies.
+We derive analytic posteriors for the two-sequence tMRCA under constant size, exponential growth, exponential decline, and bottleneck models, and quantify prior influence using summary-based metrics such as mean shift, median shift, and mode shift, together with the Wasserstein-1 distance and the coalescent information ratio $\Omega$.
+By mapping parameter regimes to exemplary pathogens, _Influenza_ with high mutational signal and _Mycobacterium tuberculosis_ with low signal, we show theoretically that prior impact declines with increasing mutational signal and effective population size. Yet, prior influence can be substantial when signal is weak or when population dynamics depart from constancy. Exponential growth can move the posterior to earlier or later times depending on the growth rate, whereas bottlenecks induce non-monotonic effects and secondary posterior peaks.
+We then simulate trees under constant and exponential growth population models, generate sequences, and re-estimate times on fixed topologies in BEAST using either a constant coalescent prior or a piecewise-constant skyline prior. The skyline prior recovers temporal population size changes and slightly reduces root-height and deep-branch errors under low signal with fast growth, whereas both priors perform similarly when signal is medium to high or when population models are more similar to constant models.
+Overall, demographic misspecification can bias time estimates in bacteria-like settings with limited signal. When the true demography is uncertain, flexible skyline priors are preferable, while constant priors remain adequate for high-signal viral analyses or large effective population sizes in near constant settings.
+
+## Code template
+
+Scripts to simulate trees and create Beast xml files were adapted from the BESP_paper-analysis repository by KV Parag, L du Plessis and OG Pybus with the corresponding paper _Jointly Inferring the Dynamics of Population Size and Sampling Intensity from Molecular Sequences_ ([https://doi.org/10.1093/molbev/msaa016](https://doi.org/10.1093/molbev/msaa016)).
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3649734.svg)](https://doi.org/10.5281/zenodo.3649734)
 
-## Summary
-
-This repository contains the raw data, configuration files and scripts necessary to reproduce the BESP analyses presented in [https://doi.org/10.1093/molbev/msaa016](https://doi.org/10.1093/molbev/msaa016). Some of the scripts may need some adjustment depending on the local setup. 
-
-### Abstract
-
-_Estimating past population dynamics from molecular sequences that have been sampled longitudinally through time is an important problem in infectious disease epidemiology, molecular ecology and macroevolution. Popular solutions, such as the skyline and skygrid methods, infer past effective population sizes from the coalescent event times of phylogenies reconstructed from sampled sequences, but assume that sequence sampling times are uninformative about population size changes. Recent work has started to question this assumption by exploring how sampling time information can aid coalescent inference. Here we develop, investigate, and implement a new skyline method, termed the epoch sampling skyline plot (ESP), to jointly estimate the dynamics of population size and sampling rate through time. The ESP is inspired by real-world data collection practices and comprises a flexible model in which the sequence sampling rate is proportional to the population size within an epoch, but can change discontinuously between epochs. We show that the ESP is accurate under several realistic sampling protocols and we prove analytically that it can at least double the best precision achievable by standard approaches. We generalise the ESP to incorporate phylogenetic uncertainty in a new Bayesian package (BESP) in BEAST2. We re-examine two well-studied empirical datasets from virus epidemiology and molecular evolution and find that the BESP improves upon previous coalescent estimators and generates new, biologically-useful insights into the sampling protocols underpinning these datasets. Sequence sampling times provide a rich source of information for coalescent inference that will become increasingly important as sequence collection intensifies and becomes more formalised._
-
-
 ## Dependencies
+Used environments are summarized in the `environment_info` folder (for python environments beast_tools and snp_sites both used on the cluster, and beast-tools used for the evaluation notebooks) and the `renv` folder as well as the `renv.lock` file (for the used R environment).  
 
-### BEAST2
-BEAST v2.6.0 with the besp package installed. The package source code and installation instructions are available on [GitHub](https://github.com/laduplessis/besp) Alternatively, use the `.jar` file included with this repository.
+### BEAST1
+BEAST version 1.10.4 was used and needs to be installed. 
 
-### Python
-- numpy
-- yaml
-- BioPython
-- TreeTime
-
-### CRAN R-packages
-- ape
-- coda
-- phylodyn
-- lubridate
-- TreeSim
-
-### Other R-packages
-These packages are developed by Louis du Plessis and not available on CRAN yet. These packages can be installed from Github using `devtools::install_github()`.
-
+### Other süecific packages
+The `beastio` packages arise developed by Louis du Plessis and not available on CRAN yet. It can be installed from Github using `devtools::install_github()`.
 - [beastio](https://github.com/laduplessis/beastio): 
 	- _R-package with functions for pre- and post-processing of BEAST and BEAST2 files (good for automating the functionality in Tracer or Logcombiner e.g. checking convergence in hundreds of replicates from a simulation study or combining many chains)._
-- [rskylinetools](https://github.com/laduplessis/rskylinetools): 
-	- _R-package implementing function for gridding skylines (so this work doesn't need to be painstakingly done in Tracer)._
 
+## Workflow
 
+The following provides an explenation which scripts and notebooks need to be run to reproduce the simulation study. 
 
-## Bayesian Simulation Study
+### Simulate trees under a population model
+The population models to choose from are specified in the `SimUtils.R` file. Specific models for simulation are selected in the `simulate_trees.R` file which can be run to simulate the trees. The simulation can be run using the `simulate_trees.sh` script (around 3h).
 
-Simulate 100 replicate trees under a density-defined (linear preferential sampling) protocol and a frequency-defined (constant number of samples per epoch) protocol with 8 and 24 sampling epochs. Trees are simulated under five demographic scenarios (1) constant-size, (2) bottleneck, (3) boom-bust, (4) cyclical boom-bust and (5) logistic growth and decline. 
+### Simulate alignment with SeqGen and get SNPs with `snp-sites`
 
-XML files are then created for each simulated tree and run in BEAST2. Finally, analyses are checked for convergence and summary statistics are computed in R. The results report contains some plots from example analyses, but plots for every replicate are stored in `results/`. Runs where the automatic check for convergence failed can be checked in Tracer (the ESS calculation is slightly different in coda to Tracer).
+Before the alignment can be generated, a list of all trees is needed. This is done by running `bash make_tree_jobs.sh`. Them, the snp-sites environment needs to be activated: `conda activate snp_sites` and the `simulate_alignments.sh` script from the `scripts` folder needs to be run (around 5min).
 
-To make the simulations run faster reduce the number of replicates, or increase the lower bound on the population size used to simulate coalescent trees (`SimUtils.R`, line 78). Keep in mind that if the lower bound is too high the demographic function for each simulated tree will turn into a constant-size coalescent once this bound is reached.
+### Make Beast xml files
+For all simulated trees, sequences are generated based on a specified mutation rate and used as an input to Beast. Beast is then run with a constant coalescent population size prior and a Skyline Coalescent prior. To generate the xml files needed as input to Beast, `scripts/MakeBEASTXML.py` can be used. It can be run running `scripts/run_make_beast_xml.sh` after activating the `beast_tools` conda environment. It uses templates specified in the `results/pop_size_simulations/templates` folder and adds parameters specified in the config files that can be found in the `results/pop_size_simulations/config` folder. `MakeBEASTXML.py` subsamples sequences created before with SeqGen and snp sites.
 
-To save space we only provide XML files and output figures for the 24-epoch BESP results and only figures on a log-scale. The output workflow for the single-epoch BESP (linear preferential sampling) are provided for comparison (but are not presented in the paper).
+### Run Beast
+To run beast, first a list of all beast xml files is needed. This list is generated with `find ../results/pop_size_simulations/simulation_results_3 -name "*.xml" > xml_list_3.txt` run in the `scripts` folder.
 
-1. **Simulate trees:** 
-	- _Input:_ N/A
-	- _Scripts:_ 
-		- `scripts/palettes.R`
-		- `scripts/SimUtils.R`
-	- _Workflow:_  `workflows:simulate_trees.Rmd`	
-	- _Output:_ 
-		- `results/simulations/`: Stored in `.RData`, `.csv`, `.trees` and `.json` files. _(Only the `.trees` and `.json` files are uploaded on the repository)._
-2. **Create XML files:** 
-	- _Input:_
-		- `templates/`: Template BEAST2 XML files for fixed tree analyses with the BESP with placeholders for data and parameters. 
-		- `results/simulation_results/linear_epoch_24/config/:` Configuration files for the five different demographic scenarios.
-	- _Scripts:_ 
- 		- `scripts/beastutils.py`
-		- `scripts/MakeBEASTXML.py`
-	- _Workflow:_ Run from `scripts/`
-	
-		```bash
-		python MakeBEASTXML.py -i ../results/simulation_results/linear_epoch_24/config/
-		```
-	- _Output:_
-		- `results/simulation_results/linear_epoch_24/`: XML files and bash script for running XML files.
-3. **Run simulation inferences:**
-	- _Input:_ `results/simulation_results/linear_epoch_24/`
-	- _Workflow:_ Run the bash script in the directory of each of the demographic scenarios and provide the BEAST2 `.jar` file as the first argument or use GNU parallel to speed up the process if you have many cores, e.g. run from the directory with the XML files: 
+Afterwards Beast is run on all xml files by running `run_beast_array.sh` (around 16h).
 
-		```bash
-		ls *.xml | parallel --delay 1 --jobs 75% --results outdir -I% --max-args 1 java -jar ../../../../BEAST2_BESP.jar -overwrite -seed 127 % &` from `results/simulation_results/linear_epoch_24/bottleneck/
-		```
-	- _Output:_  
-		- `results/simulation_results/linear_epoch_24/`: 
-4. **Check convergence and compute summary statistics:**
-	- _Input:_ `results/simulation_results/linear_epoch_24/`
-	- _Scripts:_
-		- `scripts/palettes.R`
-		- `scripts/SimUtils.R`
-		- `scripts/SimResultUtils.R`
-	- _Workflow:_ `workflows/simulation_results_linear_epoch_24/`
-	- _Output:_ 
-		- `results/simulation_results/linear_epoch_24/`: Summary statistic are stored in `.csv` files (population size statistics are calculated from the present to the most ancient sample and from the present to the TMRCA). For each replicate 4 pdf figures are produced showing the results in real/log space and the results in real/log space cut off at the most ancient sample.
+If you want to run Beast several times to combine the runs later, I copied the xml files to a new directory and reran Beast with a new seed (adapt `run_beast_array.sh`). A new `xml_list.txt` file needs to be specified as well. To copy run:
+```
+rsync -av --include='*/' --include='*.xml' --exclude='*' \
+/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results/ \
+/cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results_3/
+````
+### Combine runs
+To combine runs, the `combine_runs.sh` script needs to be run. The script assumes that all runs were repeated three times and saved in the `simulation_results`, `simulation_results_2` and `simulation_results_3` folders. A burnin of $10\%$ is applied.
 
+### Create summary trees of runs with sufficient ESS
+The `check_mcmc.sh` script select all combined runs that have a sufficiently high ESS (above $200$) considering the combined log and trees files. The successful combined runs are then saved in the `successful_mcmc_runs.csv` file that is created in the `scripts` folder. This file was renamed when downloading to `successful_combined_runs.csv`.  The `check_mcmc.sh`file then automatically runs treeannotator on the successful runs creating summary trees.
 
-## Case study 1: Seasonal Human Influenza
+### Evaluate results
+Results are evaluated in the `evaluate_populationsize.ipynb` (only considers population size) and the `evaluate_results.ipynb` (root times and branch lengths). Helper functions are loaded from the `evaluation_helpers.py` file.
 
-1. **Raw data:**
-	- `data/H3N2/HA.fas` and `data/H3N2/HA.csv`: Full HA dataset from Rambaut _et al._ (2008) (687 sequences). 
-	- `data/H3N2/HA_trim.fas` and `data/H3N2/HA_trim.csv`: HA dataset from Rambaut _et al._ (2008) with the first incomplete season removed (637 sequences).
-2. **Initial trees:**
-	- _Input:_ `data/H3N2/`
-	- _Workflow:_ Run from `results/initial_trees/H3N2_trim/`:
-		1. RAxML tree with 10 random starts
-
-			```bash
-			raxmlHPC-PTHREADS-AVX -m GTRGAMMA -T 2 -# 10 -p 12345 -s ../../../data/H3N2/HA_trim.fas -n HA_trim.GTR+
-			```
-
-		2. Rapid bootstrapping with 100 replicates (unnecessary if you only want a dated tree)
-
-			```bash
-			raxmlHPC-PTHREADS-AVX -m GTRGAMMA -# 100 -p 12345 -x 12345 -s ../../../data/H3N2/HA_trim.fas -n HA_trim.GTR+G.RAPIDBS
-			
-			raxmlHPC-PTHREADS-AVX -m GTRGAMMA -f b -z RAxML_bootstrap.HA_trim.GTR+G.RAPIDBS -t RAxML_bestTree.HA_trim.GTR+G -n HA_trim.GTR+G.tree
-			```
-
-		3. TreeTime dated tree
-	
-			```bash
-			treetime --aln ../../../data/H3N2/HA_trim.fas --tree RAxML_bipartitionsBranchLabels.HA_trim.GTR+G.tree --dates ../../../data/H3N2/HA_trim.csv --coalescent skyline --confidence --outdir treetime_HA
-			``` 
-3. **Run analyses:**
-	- _Input:_
-		- `results/H3N2/HA_trim/HA.HKY+G+F.BESP40_12.xml`: BESP with 40 segments, 12 epochs and initial tree calculated above.
-		- `results/H3N2/HA_trim/HA.HKY+G+F.BESP40_1.xml`: BESP with 40 segments, 1 epoch and initial tree calculated above.
-		- `results/H3N2/HA_trim/HA.HKY+G+F.BSP40.xml`: BSP with 40 segments and initial tree calculated above.
-	- _Workflow:_ Run 7 chains for each XML file, starting from different seeds (this is best done on a remote server since it will take a long time to run):
- 
-		```bash
-		mkdir output
-		for SEED in 125 126 127 128 129 130 131 
-		do 
-			nohup java -jar ../../../BEAST2_BESP.jar -overwrite -seed $SEED -threads 2 HA.HKY+G+F.BSP40.xml > HA.HKY+G+F.BSP40.${SEED}.out &
-			nohup java -jar ../../../BEAST2_BESP.jar -overwrite -seed $SEED -threads 2 HA.HKY+G+F.BESP40_1.xml > HA.HKY+G+F.BESP40_1.${SEED}.out &
-			nohup java -jar ../../../BEAST2_BESP.jar -overwrite -seed $SEED -threads 2 HA.HKY+G+F.BESP40_12.xml > HA.HKY+G+F.BESP40_12.${SEED}.out &
-		done
-		
-		```		
-	- _Output:_
-		- `results/H3N2/HA_trim/output/`
-5. **Check convergence and analyse results:**
-	- _Input:_ `results/H3N2/HA_trim/output/`
-	- _Workflow:_ `workflows/HA_trim_results.Rmd`
-	- _Output:_ `results/H3N2/HA_trim/figures/`
-
-## Case study 2: Steppe Bison
-
-1. **Raw data:**
-	- `data/Bison/bison_2013.fasta` and `data/Bison/bison_2013_taxa.csv`: Bison dataset from Gill _et al._ (2013) (152 sequences).
-2. **Run analyses:**
-	- _Input:_
-		- `results/Bison/Bison.HKY.BESP20_12.xml`: BESP with 20 segments and 12 epochs.
-		- `results/Bison/Bison.HKY.BESP20_1.xml`: BESP with 20 segments and 1 epoch.
-		- `results/Bison/Bison.HKY.BSP20.xml`: BSP with 20 segments.
-	- _Workflow:_ Run 3 chains for each XML file, starting from different seeds:
-
-		```bash
-		mkdir output
-		for SEED in 125 126 127
-		do 
-			java -jar ../../../BEAST2_BESP.jar -overwrite -seed $SEED Bison.HKY.BSP20.xml > Bison.HKY.BSP20.${SEED}.out&
-			java -jar ../../../BEAST2_BESP.jar -overwrite -seed $SEED Bison.HKY.BESP20_1.xml > Bison.HKY.BESP20_1.${SEED}.out
-			java -jar ../../../BEAST2_BESP.jar -overwrite -seed $SEED Bison.HKY.BESP20_12.xml > Bison.HKY.BESP20_12.${SEED}.out
-		done		
-		```
-
-	- _Output:_
-		- `results/Bison/output/`
-3. **Check convergence and analyse results:**
- 	- _Input:_ `results/Bison/output/`
-	- _Workflow:_ `workflows/bison_results.Rmd`
-	- _Output:_ `results/Bison/figures/`
+### Additional information:
+- If you change the number of trees to simulate, also change the number of jobs to run in the array scripts
