@@ -4,7 +4,7 @@
 __pycache__
 *_files/
 *_cache/
-*.csv
+#*.csv
 *.RData
 *.state
 #*.sh
@@ -14,6 +14,7 @@ __pycache__
 .Rprofile
 BESP_paper-analyses.Rproj
 renv/library/
+workflows/combined_branch_lengths.csv
 results/pop_size_simulations/simulation_results/
 results/pop_size_simulations/simulation_results_combined/
 results/pop_size_simulations/simulation_results_old/
