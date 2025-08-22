@@ -14,8 +14,6 @@ Overall, demographic misspecification can bias time estimates in bacteria-like s
 
 Scripts to simulate trees and create Beast xml files were adapted from the BESP_paper-analysis repository by KV Parag, L du Plessis and OG Pybus with the corresponding paper _Jointly Inferring the Dynamics of Population Size and Sampling Intensity from Molecular Sequences_ ([https://doi.org/10.1093/molbev/msaa016](https://doi.org/10.1093/molbev/msaa016)).
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3649734.svg)](https://doi.org/10.5281/zenodo.3649734)
-
 ## Dependencies
 Used environments are summarized in the `environment_info` folder (for python environments beast_tools and snp_sites both used on the cluster, and beast-tools used for the evaluation notebooks) and the `renv` folder as well as the `renv.lock` file (for the used R environment).  
 
