@@ -20,7 +20,7 @@ Used environments are summarized in the `environment_info` folder (for python en
 ### BEAST1
 BEAST version 1.10.4 was used and needs to be installed. 
 
-### Other süecific packages
+### Other specific packages
 The `beastio` packages arise developed by Louis du Plessis and not available on CRAN yet. It can be installed from Github using `devtools::install_github()`.
 - [beastio](https://github.com/laduplessis/beastio): 
 	- _R-package with functions for pre- and post-processing of BEAST and BEAST2 files (good for automating the functionality in Tracer or Logcombiner e.g. checking convergence in hundreds of replicates from a simulation study or combining many chains)._
