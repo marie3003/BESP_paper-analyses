@@ -1,0 +1,282 @@
+---
+title: "Tree simulations"
+author: "Louis du Plessis"
+date: \today
+fontsize: 10pt
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    keep_tex: false
+    fig_crop: false
+---
+
+
+```{r rsetup, echo=FALSE, warning=FALSE, message=FALSE, results='hide'}
+
+    library(phylodyn)
+    library(bdskytools)
+
+    # Resolve the directory containing this Rmd, regardless of working directory.
+    # Works during knitting (knitr::current_input) and interactive RStudio use.
+    .script_dir <- if (isTRUE(getOption("knitr.in.progress"))) {
+      dirname(normalizePath(knitr::current_input()))
+    } else if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      dirname(normalizePath(rstudioapi::getActiveDocumentContext()$path))
+    } else {
+      getwd()
+    }
+
+    source(file.path(.script_dir, "SimUtils.R"))
+
+    # Global settings
+    nreplicates <- 5
+    samp_start  <- 0
+    samp_end    <- 500
+    nlimit      <- 10
+    nrsamples   <- 250
+
+    outputbase <- normalizePath(file.path(.script_dir, "../results/simulations_plots/"), mustWork = FALSE)
+    dir.create(outputbase, recursive = TRUE, showWarnings = FALSE)
+
+    # Save the current plot to a PDF without disturbing the active graphics device.
+    # Saves orig device, opens PDF, replots via expr, closes PDF, restores orig device.
+    savePDF <- function(filepath, width=12, height=10, expr) {
+      orig_dev <- dev.cur()
+      on.exit(if (orig_dev > 1) dev.set(orig_dev), add=TRUE)
+      pdf(filepath, width=width, height=height)
+      force(expr)
+      dev.off()
+    }
+    
+    trajectories <- data.frame(row.names  =c("expgrowth_fast", "expgrowth_slow", "uniform", "bottleneck"),
+                               names      =c("Fast exponential growth", "Slow exponential growth","Uniform", "Bottleneck"),
+                               maxdensity = c(0.4, 0.4, 0.05, 0.05),
+                               maxlineages= c(300, 300, 100,  100))
+    
+```
+    
+    
+```{r plotfunctions, echo=FALSE, warning=FALSE, message=FALSE, results='hide'}
+
+    # Get the LTT through time and interpolate it to the grid
+    # if plot==TRUE add the original (not interpolated) LTT to the current plot
+    getLTT <- function(tree, grid, plot=TRUE, col=pal.dark(cblue,0.25)) {
+      ltt <- ltt.plot.coords(tree)
+      lttinterp <- approx(ltt[,1]*-1,ltt[,2], xout=grid, method='constant', rule=2)
+      if (plot) {
+          lines(ltt[,1]*-1, ltt[,2], col=col, type='S')
+      }
+      return(lttinterp$y)
+    }
+    
+    
+    # Get HPD of a par of the simulations (e.g. coal_times or samp_times)
+    # if plot==TRUE add the HPD and median line to the current plot
+    # ... is the parameters to be passed to the kernel density estimator (from, to, bw etc.)
+    getHPD <- function(sims, par, plot=TRUE, col=pal.dark(cblue), fill=pal.dark(cblue,0.5), ...) {
+      
+      densities   <- lapply(sims, function(x) density(x[[par]], ...))
+      densities_y <- sapply(densities, function(d) d$y)
+      par_hpd     <- getMatrixHPD(t(densities_y))
+      
+      if (plot) {
+          polygon(c(densities[[1]]$x, rev(densities[[1]]$x)), c(par_hpd[1,],rev(par_hpd[3,])), border=NA, col=fill)
+          lines(densities[[1]]$x,par_hpd[2,],col=col)
+      }
+      
+      return(par_hpd)
+    }
+    
+    
+    plotPointProcess <- function(sim, par, col=pal.dark(cblue)) {
+      
+      axis(1,lwd=0,lwd.ticks=1)
+      abline(h=0)
+      
+      abline(v=sim[[par]], col=col)
+      abline(v=max(sim[[par]]), lty=3)
+      points(sim[[par]], rep(1,length(sim[[par]])), pch=20, col=col)
+    }
+    
+    
+    summariseSims <- function(sims, maxdensity=0.05, maxlineages=100) {
+      
+      #maxtime   <- median(sapply(sims, function(x) max(x$coal_times, x$samp_times)))
+      maxtime <- max(sims[[1]]$coal_times)
+      
+      #layout(matrix(1:4, nrow=2, byrow=TRUE))
+      layout(matrix(c(1,2,3,4,5,4,6,4),byrow=TRUE,ncol=2),heights=c(0.5,0.5,0.2,0.2))
+      par(mar=c(5,4,2,3)+0.1)
+      plot(sims[[1]]$trajgrid[,1], sims[[1]]$trajgrid[,2], type='l', lwd=2,
+           xlim=c(0,maxtime), xlab="Time", ylab=expression("True N"[e]), las=1)
+      abline(v=(sims[[1]]$samp_end), lty=3, lwd=1)
+      
+      if (!is.na(sims[[1]]$samp_intensity[1])) {
+          par(new=TRUE)
+          epoch_times <- seq(sims[[1]]$samp_start, sims[[1]]$samp_end, length.out=(sims[[1]]$nrepochs+1))
+          plot(epoch_times, c(sims[[1]]$samp_intensity[1], sims[[1]]$samp_intensity), type='S', col=pal.dark(cred), lty=1, lwd=2,
+               xlim=c(0,maxtime), ylim=c(0,max(sims[[1]]$samp_intensity)*1.25), btw='n', axes=FALSE, xlab="", ylab="")
+          axis(4,las=1)
+          #mtext(side=4,"Sampling intensity", line=1, col=pal.dark(cred))
+          legend('top', inset=c(0,-0.1), legend="Sampling intensity", col=pal.dark(cred), lty=1, lwd=2, bty='n', xpd=TRUE)
+      }
+      
+      plot(1,type='n', xlim=c(0,maxtime),ylim=c(0,maxlineages), xlab="Time", ylab="LTT (95% HPD)", las=1)
+      timegrid <- seq(0,maxtime,length.out=100)
+      ltt_y    <- sapply(sims, function(x) getLTT(x$phylo, timegrid, col=pal.dark(cblue,0.1)))
+      ltt_hpd  <- getMatrixHPD(t(ltt_y))
+      lines(timegrid, ltt_hpd[1,], lty=2, col=pal.dark(cred))
+      lines(timegrid, ltt_hpd[2,], lty=1, col=pal.dark(cred))
+      lines(timegrid, ltt_hpd[3,], lty=2, col=pal.dark(cred))
+    
+      plot(1,type='n',xlim=c(0,maxtime), ylim=c(0,maxdensity), xlab="Time", ylab="Density (95% HPD)", las=1)
+      samp_time_hpd <- getHPD(sims, par="samp_times", to=maxtime, bw=1, col=pal.dark(cred), fill=pal.dark(cred,0.5))
+      coal_time_hpd <- getHPD(sims, "coal_times", to=maxtime, bw=1, col=pal.dark(cblue), fill=pal.dark(cblue,0.5))
+      legend('topright', legend=c("Coalescent events","Sampling events"), border=pal.dark(c(cblue, cred)), fill=pal.dark(c(cblue,cred),0.5),bty='n')
+    
+      plot(ladderize(sims[[1]]$phylo),  show.tip.label=FALSE, edge.width=0.5, direction="leftwards")
+      mtext(side=1,"Example tree")
+      #phyloplot <- ggtree(sims[[1]]$phylo,right=TRUE, lwd=0.5, ladderize=TRUE) + scale_x_reverse()
+      #plot(phyloplot, newpage=FALSE)
+      
+      plot(1,type='n', xlim=c(0,maxtime), ylim=c(0,1.1), xlab="Sampling events (example)",ylab="",las=1, bty='n', axes=FALSE)
+      plotPointProcess(sims[[1]], "samp_times", col=pal.dark(cred,0.25))
+      
+      plot(1,type='n', xlim=c(0,maxtime), ylim=c(0,1.1), xlab="Coalescent events (example)",ylab="",las=1, bty='n', axes=FALSE)
+      plotPointProcess(sims[[1]], "coal_times", col=pal.dark(cblue,0.25))
+      
+    }
+
+```
+
+
+
+# Non-preferential sampling (homochronous)
+
+```{r independent_homochronous, echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=12, fig.height=10}
+
+set.seed(9)
+outputpath <- file.path(outputbase, "independent_homochronous")
+for (i in 1:nrow(trajectories)) {
+
+  trajname <- rownames(trajectories)[i]
+  cat(paste0("## ",trajectories$names[i],"\n"))
+
+  traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+  sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_start, nlimit=nlimit)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
+  savePDF(file.path(outputpath, trajname, paste0(trajname, ".pdf")), expr={
+    summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+    title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ",nrsamples, ", Sampling period: [",samp_start,",",samp_start,"]"), outer=TRUE, line=-1.0)
+  })
+
+  cat("\n \\clearpage \n \n")
+}
+
+
+```
+
+
+# Non-preferential sampling (heterochronous)
+
+```{r independent_heterochronous, echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=12, fig.height=10}
+
+set.seed(9)
+outputpath <- file.path(outputbase, "independent_heterochronous")
+for (i in 1:nrow(trajectories)) {
+
+  trajname <- rownames(trajectories)[i]
+  cat(paste0("## ",trajectories$names[i],"\n"))
+
+  traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+  sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_end, nlimit=nlimit)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
+  savePDF(file.path(outputpath, trajname, paste0(trajname, ".pdf")), expr={
+    summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+    title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ",nrsamples, ", Sampling period: [",samp_start,",",samp_end,"]"), outer=TRUE, line=-1.0)
+  })
+
+  cat("\n \\clearpage \n \n")
+}
+
+
+```
+
+# Constant linear preferential sampling
+
+```{r linear_constant, echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=12, fig.height=10}
+
+set.seed(9)
+outputpath <- file.path(outputbase, "linear_constant")
+for (i in 1:nrow(trajectories)) {
+
+  trajname <- rownames(trajectories)[i]
+  cat(paste0("## ",trajectories$names[i],"\n"))
+
+  traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+  sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_end, nlimit=nlimit)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
+  savePDF(file.path(outputpath, trajname, paste0(trajname, ".pdf")), expr={
+    summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+    title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ~",nrsamples, ", Sampling period: [",samp_start,",",samp_end,"]"), outer=TRUE, line=-1.0)
+  })
+
+  cat("\n \\clearpage \n \n")
+}
+
+
+```
+
+# Epoch linear preferential sampling (24 epochs - 2 months/epoch)
+
+```{r linear_epoch_24, echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=12, fig.height=10}
+
+set.seed(9)
+outputpath <- file.path(outputbase, "linear_epoch_24")
+for (i in 1:nrow(trajectories)) {
+
+  trajname <- rownames(trajectories)[i]
+  cat(paste0("## ",trajectories$names[i],"\n"))
+
+  traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+  sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_end, nlimit=nlimit, nrepochs=24)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
+  savePDF(file.path(outputpath, trajname, paste0(trajname, ".pdf")), expr={
+    summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+    title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ~",nrsamples, ", Sampling period: [",samp_start,",",samp_end,"]"), outer=TRUE, line=-1.0)
+  })
+
+  cat("\n \\clearpage \n \n")
+}
+
+
+```
+
+
+
+# Epoch linear preferential sampling (8 epochs - 6 months/epoch)
+
+```{r linear_epoch_8, echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=12, fig.height=10}
+
+set.seed(9)
+outputpath <- file.path(outputbase, "linear_epoch_8")
+for (i in 1:nrow(trajectories)) {
+
+  trajname <- rownames(trajectories)[i]
+  cat(paste0("## ",trajectories$names[i],"\n"))
+
+  traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+  sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_end, nlimit=nlimit, nrepochs=8)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE)
+  savePDF(file.path(outputpath, trajname, paste0(trajname, ".pdf")), expr={
+    summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+    title(main=trajectories$names[i], sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ~",nrsamples, ", Sampling period: [",samp_start,",",samp_end,"]"), outer=TRUE, line=-1.0)
+  })
+
+  cat("\n \\clearpage \n \n")
+}
+
+
+```

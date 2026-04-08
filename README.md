@@ -27,7 +27,7 @@ The `beastio` packages arise developed by Louis du Plessis and not available on 
 
 ## Workflow
 
-The following provides an explenation which scripts and notebooks need to be run to reproduce the simulation study. 
+The following provides an explanation which scripts and notebooks need to be run to reproduce the simulation study. 
 
 ### Simulate trees under a population model
 The population models to choose from are specified in the `SimUtils.R` file. Specific models for simulation are selected in the `simulate_trees.R` file which can be run to simulate the trees. The simulation can be run using the `simulate_trees.sh` script (around 3h).

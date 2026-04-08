@@ -12,5 +12,8 @@ module load stack/2024-06
 module load gcc/12.2.0
 module load r/4.4.0
 
+# Restore R package environment from renv.lock (skips if already up to date)
+Rscript -e "renv::restore(project='/cluster/work/stadler/beckermar/BESP_paper-analyses', prompt=FALSE)"
+
 # Run your R script
 Rscript /cluster/work/stadler/beckermar/BESP_paper-analyses/scripts/simulate_trees.R
