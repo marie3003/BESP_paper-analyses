@@ -28,8 +28,8 @@ get_trajectory <- function(type) {
     exp_rate_slow    <- 0.005
     logistic_upper   <- 200
     logistic_lower   <- 10
-    bottleneck_start <- 20
-    bottleneck_end   <- 25
+    bottleneck_start <- 50
+    bottleneck_end   <- 100
     bust_time        <- 2
     cyclic_scale_factor <- 5
     

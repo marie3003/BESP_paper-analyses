@@ -22,7 +22,7 @@ script_dir <- get_script_dir()
 source(file.path(script_dir, "SimUtils.R"))
 
 # Global settings
-nreplicates <- 5
+nreplicates <- 100
 samp_start  <- 0
 samp_end    <- 500
 nlimit      <- 10
@@ -32,7 +32,7 @@ outputbase <- file.path(script_dir, "../results/pop_size_simulations_new_param/"
 trajectories <- data.frame(row.names  =c("expgrowth_fast", "expgrowth_slow", "uniform", "bottleneck"),
                            names      =c("Fast exponential growth", "Slow exponential growth","Uniform", "Bottleneck"),
                            # only used for plotting
-                           maxdensity = c(0.4, 0.4, 0.05, 0.05),
+                           maxdensity = c(0.05, 0.05, 0.05, 0.05),
                            maxlineages = c(300, 300, 100, 100))
 
 
