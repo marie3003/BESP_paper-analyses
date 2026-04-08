@@ -1,12 +1,17 @@
 require(phylodyn)
 require(ape)
 
-bottleneck_traj2 <- function(t, start=0.5, stop=1, min=0.1, max=1) {
+bottleneck_traj_param <- function(t, start=0.5, stop=1, min=0.1, max=1) {
     result = rep(0,length(t))
     result[t <= start] <- max
     result[t > start & t < stop] <- min
     result[t >= stop] <- max
     return(result)
+}
+
+exp_traj_lower_limit = function(t, scale=1000, rate=1, lower_limit = 10)
+{
+  return(pmax(scale * exp(-t * rate), lower_limit))
 }
 
 
@@ -16,14 +21,15 @@ bottleneck_traj2 <- function(t, start=0.5, stop=1, min=0.1, max=1) {
 get_trajectory <- function(type) {
   
     unif_upper       <- 2000
-    unif_lower       <- 200
+    unif_lower       <- 20
     exp_scale        <- 2000
-    exp_rate_fast    <- 0.002
-    exp_rate_slow    <- 0.001
+    exp_lower_limit   <- 10
+    exp_rate_fast    <- 0.01
+    exp_rate_slow    <- 0.005
     logistic_upper   <- 200
     logistic_lower   <- 10
-    bottleneck_start <- 50
-    bottleneck_end   <- 300
+    bottleneck_start <- 20
+    bottleneck_end   <- 25
     bust_time        <- 2
     cyclic_scale_factor <- 5
     
@@ -40,12 +46,12 @@ get_trajectory <- function(type) {
   
     switch(type,
           "uniform" = function(t) unif_traj(t, level = unif_upper),
-          "expgrowth_fast"  = function(t) exp_traj(t, scale=exp_scale, rate=exp_rate_fast),
-          "expgrowth_slow"  = function(t) exp_traj(t, scale=exp_scale, rate=exp_rate_slow),
+          "expgrowth_fast"  = function(t) exp_traj_lower_limit(t, scale=exp_scale, rate=exp_rate_fast, lower_limit=exp_lower_limit),
+          "expgrowth_slow"  = function(t) exp_traj_lower_limit(t, scale=exp_scale, rate=exp_rate_slow, lower_limit=exp_lower_limit),
           "boombust"   = function(t) boombust_traj(t, bust=bust_time, scale=exp_scale),
           "logistic"   = function(t) logistic_traj(t, max=logistic_upper),
           "cyclic"     = function(t) cyclic_traj_boombust(t),
-          "bottleneck" = function(t) bottleneck_traj2(t, min=unif_lower, max=unif_upper, start=bottleneck_start, stop=bottleneck_end)
+          "bottleneck" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=bottleneck_start, stop=bottleneck_end)
     )
 }
 
@@ -209,75 +215,89 @@ save_simulation_csv <- function(sim, path, basename) {
 #' Save simulation result in a variety of formats
 #' 
 #' @param sanitise_times If true
-save_simulation <- function(simresult, basename, path, gridsize=1000, sanitise_times=TRUE, RData=TRUE, csv=TRUE, newick=TRUE, json=TRUE) {
+save_simulation <- function(simresult, basename, path, gridsize=1000,
+                            sanitise_times=TRUE, RData=TRUE, csv=TRUE,
+                            newick=TRUE, json=TRUE) {
   
-    #print(paste("Saving",path,basename))
+  dir.create(path, showWarnings=FALSE, recursive=TRUE)
   
-    dir.create(path, showWarnings=FALSE, recursive=TRUE)
+  if (is.null(names(simresult))) {
+    simresult <- lapply(simresult, prepare_simulation,
+                        gridsize=gridsize,
+                        sanitise_times=sanitise_times,
+                        sanity_check=TRUE)
+  } else {
+    simresult <- prepare_simulation(simresult,
+                                    gridsize=gridsize,
+                                    sanitise_times=sanitise_times,
+                                    sanity_check=TRUE)
+  }
+  
+  if (RData) {
+    save(simresult, file=paste0(path, basename, ".RData"))
+  }
+  
+  if (csv) {
+    if (is.null(names(simresult))) {
+      i <- 0
+      lapply(simresult, function(x) {
+        save_simulation_csv(x, path, paste(basename, i, sep="_"))
+        i <<- i + 1
+      })
+    } else {
+      save_simulation_csv(simresult, path, basename)
+    }
+  }
+  
+  # define JSON-safe version in both cases
+  if (is.null(names(simresult))) {
+    simresultJ <- lapply(simresult, function(x) {
+      x$phylo <- NULL
+      x
+    })
+  } else {
+    simresultJ <- simresult
+    simresultJ$phylo <- NULL
+  }
+  
+  if (newick) {
+    trees_file <- paste0(path, basename, ".trees")
+    if (file.exists(trees_file)) file.remove(trees_file)
     
     if (is.null(names(simresult))) {
-        simresult <- lapply(simresult, prepare_simulation, gridsize=gridsize, sanitise_times=TRUE, sanity_check=TRUE)  
+      trees <- lapply(simresult, function(x) x$phylo)
+      invisible(lapply(trees, write.tree,
+                       file=trees_file,
+                       append=TRUE))
     } else {
-        simresult <- prepare_simulation(simresult, gridsize=gridsize, sanitise_times=TRUE, sanity_check=TRUE)
+      write.tree(simresult$phylo, file=paste0(path, basename, ".tree"))
     }
-    
-    # Save as RData
-    if (RData) {
-        save(simresult, file=paste0(path,basename,".RData"))
-    }
-    
-    # Save as csv and newick files
-    if (csv) {
-        if (is.null(names(simresult))) {
-            i <- 0
-            lapply(simresult, function(x) {
-                save_simulation_csv(x, path, paste(basename,i,sep="_"))
-                i <<- i + 1
-            })     
-        } else {
-            save_simulation_csv(simresult, path, basename)
-        }
-    }
-    
-    # Save as Newick trees (and remove tree objects from data structure)
-    if (newick) {
-      file.remove(paste0(path,basename,".trees"))
-      if (is.null(names(simresult))) {
-          trees     <- lapply(simresult, function(x) x$phylo)
-          simresultJ<- lapply(simresult, function(x) { 
-                                            x$phylo <- NULL
-                                            x })
-          t         <- lapply(trees, write.tree, file=paste0(path,basename,".trees"), append=TRUE)
-      } else {
-          write.tree(sim$phylo, file=paste0(path,basename,".tree"))
-          simresult$phylo <- NULL
-      } 
-    }
-    
-    # Save as JSON file
-    if (json) {
-        simresultJSON   <- jsonlite::toJSON(simresultJ)
-        jsonfile        <- file(paste0(path,basename,".json"),'w')
-        cat(simresultJSON, file=jsonfile)
-        close(jsonfile)
-    }
-    
-    return(simresult)
+  }
+  
+  if (json) {
+    simresultJSON <- jsonlite::toJSON(simresultJ)
+    jsonfile <- file(paste0(path, basename, ".json"), "w")
+    cat(simresultJSON, file=jsonfile)
+    close(jsonfile)
+  }
+  
+  return(simresult)
 }
 
 
 simulation_example <- function() {
     
     # Example 1 - single simulation trajectory
-    trajname <- "cyclic"
+    trajname <- "expgrowth_fast"
     traj <- get_trajectory(trajname)
     sim  <- simulate_genealogy(traj)
-    save_simulation(sim, basename="cyclic_test", path="../results/test/", RData=TRUE, csv=TRUE)
+    save_simulation(sim, basename="exp_growth_test", path="../results/test/", RData=TRUE, csv=TRUE)
      
     
     # Example 2 - 100 simulation trajectories
-    traj <- lapply(rep(trajname, 100), get_trajectory)
-    sims <- lapply(traj, simulate_genealogy)
-    save_simulation(sims, basename=trajname, path="../results/test/", RData=TRUE, csv=TRUE)
+    #traj <- lapply(rep(trajname, 100), get_trajectory)
+    #sims <- lapply(traj, simulate_genealogy)
+    #save_simulation(sims, basename=trajname, path="../results/test/", RData=TRUE, csv=TRUE)
     
 }
+
