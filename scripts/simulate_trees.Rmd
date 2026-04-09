@@ -31,7 +31,7 @@ output:
     source(file.path(.script_dir, "SimUtils.R"))
 
     # Global settings
-    nreplicates <- 5
+    nreplicates <- 2
     samp_start  <- 0
     samp_end    <- 500
     nlimit      <- 10

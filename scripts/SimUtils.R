@@ -20,12 +20,12 @@ exp_traj_lower_limit = function(t, scale=1000, rate=1, lower_limit = 10)
 #' @param type One of {uniform, expgrowth, boombust, logistic, cyclic, bottleneck}
 get_trajectory <- function(type) {
   
-    unif_upper       <- 2000
-    unif_lower       <- 20
-    exp_scale        <- 2000
+    unif_upper       <- 1000
+    unif_lower       <- 10
+    exp_scale        <- 1000
     exp_lower_limit   <- 10
-    exp_rate_fast    <- 0.01
-    exp_rate_slow    <- 0.005
+    exp_rate_fast    <- 0.02
+    exp_rate_slow    <- 0.01
     logistic_upper   <- 200
     logistic_lower   <- 10
     bottleneck_start <- 50
