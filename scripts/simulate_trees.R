@@ -22,9 +22,9 @@ script_dir <- get_script_dir()
 source(file.path(script_dir, "SimUtils.R"))
 
 # Global settings
-nreplicates <- 10
+nreplicates <- 100
 samp_start  <- 0
-samp_end    <- 100
+#samp_end    <- 100
 nlimit      <- 10
 nrsamples   <- 250
 outputbase <- file.path(script_dir, "../results/pop_size_simulations_new_param/")
