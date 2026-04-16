@@ -32,3 +32,5 @@ scripts/logs/
 scripts/*.out
 scripts/*.err
 scripts/.trees
+
+results/run1/simulated_data/**/*.fasta
