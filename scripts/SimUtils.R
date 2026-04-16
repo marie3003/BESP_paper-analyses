@@ -22,35 +22,18 @@ get_trajectory <- function(type) {
   
     unif_upper       <- 1000
     unif_lower       <- 10
-    exp_scale        <- 1000
+    exp_scale        <- 2000
     exp_lower_limit   <- 10
     exp_rate_fast    <- 0.02
     exp_rate_slow    <- 0.01
-    logistic_upper   <- 200
-    logistic_lower   <- 10
-    bottleneck_start <- 50
-    bottleneck_end   <- 100
-    bust_time        <- 2
-    cyclic_scale_factor <- 5
+    bottleneck_start <- 10
+    bottleneck_end   <- 13
     
-    cyclic_traj_boombust <- function(t) {
-      t_months <- t * 12
-      cycle_pos <- t_months %% 12  # position within the 12-month cycle
-      
-      result <- ifelse(cycle_pos <= 6,
-                       1800 * exp(-cycle_pos / 2) + 200,
-                       1800 * exp(cycle_pos / 2 - 6)) + 200
-      
-      return(result)
-    }
   
     switch(type,
           "uniform" = function(t) unif_traj(t, level = unif_upper),
           "expgrowth_fast"  = function(t) exp_traj_lower_limit(t, scale=exp_scale, rate=exp_rate_fast, lower_limit=exp_lower_limit),
           "expgrowth_slow"  = function(t) exp_traj_lower_limit(t, scale=exp_scale, rate=exp_rate_slow, lower_limit=exp_lower_limit),
-          "boombust"   = function(t) boombust_traj(t, bust=bust_time, scale=exp_scale),
-          "logistic"   = function(t) logistic_traj(t, max=logistic_upper),
-          "cyclic"     = function(t) cyclic_traj_boombust(t),
           "bottleneck" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=bottleneck_start, stop=bottleneck_end)
     )
 }
