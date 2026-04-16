@@ -134,7 +134,7 @@ for (i in 1:nrow(trajectories)) {
 
   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
   sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_start, nlimit=nlimit)
-  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=TRUE)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=FALSE)
 
   pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
   summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
@@ -154,7 +154,7 @@ for (i in 1:nrow(trajectories)) {
 # 
 #   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
 #   sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_end, nlimit=nlimit)
-#   sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=TRUE)
+#   sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=FALSE)
 # 
 #   pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
 #   summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
@@ -174,7 +174,7 @@ for (i in 1:nrow(trajectories)) {
 
   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
   sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=trajectories$samp_end[i], nlimit=nlimit)
-  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=TRUE)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=FALSE)
 
   pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
   summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
@@ -196,7 +196,7 @@ for (i in 1:nrow(trajectories)) {
 # 
 #   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
 #   sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_end, nlimit=nlimit, nrepochs=24)
-#   sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=TRUE)
+#   sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=FALSE)
 # 
 #   pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
 #   summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
