@@ -16,13 +16,14 @@ JOB_LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" tree_jobs.txt)
 FOLDER=$(echo "$JOB_LINE" | cut -d ' ' -f 1)
 INDEX=$(echo "$JOB_LINE" | cut -d ' ' -f 2)
 
-BASE="../results/pop_size_simulations/independent_homochronous/${FOLDER}"
-TREE_FILE="${BASE}/${FOLDER}.trees"
+SUBFOLDER=$(basename "$FOLDER")
+BASE="../results/run1/simulated_data/${FOLDER}"
+TREE_FILE="${BASE}/${SUBFOLDER}.trees"
 TREE=$(sed -n "$((INDEX + 1))p" "$TREE_FILE")
 
 # Define output paths
-FASTA_FILE="${BASE}/${FOLDER}_${INDEX}.fasta"
-SNP_FILE="${BASE}/${FOLDER}_${INDEX}_snps.fasta"
+FASTA_FILE="${BASE}/${SUBFOLDER}_${INDEX}.fasta"
+SNP_FILE="${BASE}/${SUBFOLDER}_${INDEX}_snps.fasta"
 
 # Write the tree to a temp file with a newline
 echo -e "$TREE\n" > tmp_tree_${SLURM_ARRAY_TASK_ID}.nwk

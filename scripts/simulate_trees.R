@@ -27,7 +27,7 @@ samp_start  <- 0
 #samp_end    <- 100
 nlimit      <- 10
 nrsamples   <- 250
-outputbase <- file.path(script_dir, "../results/pop_size_simulations_new_param/")
+outputbase <- file.path(script_dir, "../results/run1/simulated_data/")
 
 trajectories <- data.frame(row.names  =c("expgrowth_fast", "expgrowth_slow", "uniform", "bottleneck"),
                            names      =c("Fast exponential growth", "Slow exponential growth","Uniform", "Bottleneck"),

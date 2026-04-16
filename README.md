@@ -34,7 +34,7 @@ The population models to choose from are specified in the `SimUtils.R` file. Spe
 
 ### Simulate alignment with SeqGen and get SNPs with `snp-sites`
 
-Before the alignment can be generated, a list of all trees is needed. This is done by running `bash make_tree_jobs.sh`. Them, the snp-sites environment needs to be activated: `conda activate snp_sites` and the `simulate_alignments.sh` script from the `scripts` folder needs to be run (around 5min).
+Before the alignment can be generated, a list of all trees is needed. This is done by running `bash get_tree_jobs.sh`. Them, the snp-sites environment needs to be activated: `conda activate snp_sites` and the `simulate_alignments.sh` script from the `scripts` folder needs to be run (around 5min).
 
 ### Make Beast xml files
 For all simulated trees, sequences are generated based on a specified mutation rate and used as an input to Beast. Beast is then run with a constant coalescent population size prior and a Skyline Coalescent prior. To generate the xml files needed as input to Beast, `scripts/MakeBEASTXML.py` can be used. It can be run running `scripts/run_make_beast_xml.sh` after activating the `beast_tools` conda environment. It uses templates specified in the `results/pop_size_simulations/templates` folder and adds parameters specified in the config files that can be found in the `results/pop_size_simulations/config` folder. `MakeBEASTXML.py` subsamples sequences created before with SeqGen and snp sites.
