@@ -59,49 +59,37 @@ rule simulate_trees:
         "r/4.4.0",
     resources:
         mem_mb  = 64000,   # 16 CPUs x 4G
-        runtime = 180,     # 3h
+        runtime = 300,     # 5h
         cpus    = 16,
     shell:
         "Rscript {input.script}"
 
 
 # =============================================================================
-# Step 2a: Simulate alignment with seq-gen (one per replicate)
+# Step 2: Simulate alignment with seq-gen and extract SNPs with snp-sites
+#         Full fasta is deleted immediately after SNP extraction to save space
 # =============================================================================
 rule simulate_alignment:
     input:
         trees = f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}.trees",
     output:
-        fasta = f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}_{{i}}.fasta",
+        snps = f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}_{{i}}_snps.fasta",
     resources:
         mem_mb  = 8000,
-        runtime = 90,
+        runtime = 180,    # 3h
         cpus    = 1,
     shell:
         """
         TREE=$(sed -n "$(( {wildcards.i} + 1 ))p" {input.trees})
-        echo -e "$TREE\n" > tmp_tree_{wildcards.sampling}_{wildcards.pop}_{wildcards.i}.nwk
+        TMPNWK=tmp_tree_{wildcards.sampling}_{wildcards.pop}_{wildcards.i}.nwk
+        TMPFASTA=tmp_fasta_{wildcards.sampling}_{wildcards.pop}_{wildcards.i}.fasta
+        echo -e "$TREE\n" > $TMPNWK
         {SEQGEN} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l10000000 -s4.6e-8 -n1 \
-            < tmp_tree_{wildcards.sampling}_{wildcards.pop}_{wildcards.i}.nwk \
-            > {output.fasta}
-        rm tmp_tree_{wildcards.sampling}_{wildcards.pop}_{wildcards.i}.nwk
+            < $TMPNWK > $TMPFASTA
+        rm $TMPNWK
+        conda run -n snp_sites snp-sites -o {output.snps} $TMPFASTA
+        rm $TMPFASTA
         """
-
-
-# =============================================================================
-# Step 2b: Extract SNPs with snp-sites
-# =============================================================================
-rule extract_snps:
-    input:
-        fasta = f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}_{{i}}.fasta",
-    output:
-        snps = f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}_{{i}}_snps.fasta",
-    resources:
-        mem_mb  = 4000,
-        runtime = 10,
-        cpus    = 1,
-    shell:
-        "conda run -n snp_sites snp-sites -o {output.snps} {input.fasta}"
 
 
 # =============================================================================

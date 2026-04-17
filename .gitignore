@@ -34,4 +34,4 @@ scripts/*.out
 scripts/*.err
 scripts/.trees
 
-results/run1/simulated_data/**/*.fasta
+results/run1/simulated_data/**/*_snps.fasta

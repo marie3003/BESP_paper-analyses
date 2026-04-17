@@ -10,6 +10,7 @@
 # conda activate snp_sites
 
 set -e
+trap 'rm -f tmp_tree_${SLURM_ARRAY_TASK_ID}.nwk' EXIT
 
 # Read line corresponding to task ID
 JOB_LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" tree_jobs.txt)
@@ -38,3 +39,6 @@ rm tmp_tree_${SLURM_ARRAY_TASK_ID}.nwk
 
 # Run snp-sites
 snp-sites -o "$SNP_FILE" "$FASTA_FILE"
+
+# Remove full alignment — only SNP file is needed downstream
+rm "$FASTA_FILE"
