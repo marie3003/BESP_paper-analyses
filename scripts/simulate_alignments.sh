@@ -38,7 +38,7 @@ echo -e "$TREE\n" > tmp_tree_${SLURM_ARRAY_TASK_ID}.nwk
 rm tmp_tree_${SLURM_ARRAY_TASK_ID}.nwk
 
 # Run snp-sites
-snp-sites -o "$SNP_FILE" "$FASTA_FILE"
+conda run -n snp_sites snp-sites -o "$SNP_FILE" "$FASTA_FILE"
 
 # Remove full alignment — only SNP file is needed downstream
 rm "$FASTA_FILE"
