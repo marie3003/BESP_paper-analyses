@@ -126,6 +126,7 @@ def pars_dates(tree, pars):
         for leaf in leaves:
             output_dates.write(f'\n\t\t<taxon id = "{leaf.name}"> <date value="0.0" direction="backwards" units="years"/> </taxon>')
     else:
+		# height is difference from root to tips, written at each tip
         heights = np.array([tree_.distance(leaf) for leaf in leaves])
         treetimes = np.max(heights) - heights
         for i, leaf in enumerate(leaves):
