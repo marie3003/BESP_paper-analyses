@@ -57,7 +57,7 @@ rule simulate_trees:
         "gcc/12.2.0",
         "r/4.4.0",
     resources:
-        mem_per_cpu = 4000,
+        mem_mb_per_cpu = 4000,
         runtime = 300,     # 5h
         cpus_per_task = 16,
     shell:
@@ -76,7 +76,7 @@ rule simulate_alignment:
     resources:
         runtime = 180,    # 3h
         cpus_per_task = 1,
-        mem_per_cpu = 8000,
+        mem_mb_per_cpu = 8000,
     shell:
         """
         TREE=$(sed -n "$(( {wildcards.i} + 1 ))p" {input.trees})
@@ -129,7 +129,7 @@ rule run_beast:
         "beast1/1.10.4",
         "libbeagle",
     resources:
-        mem_per_cpu = 8000,
+        mem_mb_per_cpu = 8000,
         runtime = 960,   # 16h
         cpus_per_task = 1,
     shell:
@@ -182,7 +182,7 @@ rule check_mcmc:
         "stack/2024-06",
         "r/4.4.0",
     resources:
-        mem_per_cpu = 2000,
+        mem_mb_per_cpu = 2000,
         runtime = 60,
         cpus_per_task = 16,
     shell:
