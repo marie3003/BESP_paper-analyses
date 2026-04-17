@@ -22,8 +22,6 @@ SEQGEN     = "Seq-Gen-1.3.5/source/seq-gen"
 def config_file(wildcards):
     return f"{CONFIG_DIR}/{wildcards.model}_{wildcards.sampling}_{wildcards.pop}_{wildcards.mutsig}.cfg"
 
-# No short() helper needed — sampling and pop names already have no internal underscores
-
 
 # =============================================================================
 # Rule all — final targets
@@ -32,6 +30,14 @@ rule all:
     input:
         # Summary trees for all successful MCMC runs (end of pipeline)
         "scripts/successful_mcmc_runs.csv"
+
+
+rule all_alignments:
+    input:
+        expand(
+            f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}_{{i}}_snps.fasta",
+            sampling=SAMPLING_TYPES, pop=POP_MODELS, i=range(NREPLICATES)
+        )
 
 
 # =============================================================================
