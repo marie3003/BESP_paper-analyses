@@ -17,7 +17,7 @@ SEEDS          = [44, 45, 46]   # one BEAST run per seed, combined later
 SIMDATA    = "results/run1/simulated_data"
 BEAST_DIR  = "results/run1/beast_inference"
 CONFIG_DIR = "results/run1/config"
-SEQGEN     = "Seq-Gen-1.3.5/source/seq-gen"
+SEQGEN     = workflow.basedir + "/../Seq-Gen-1.3.5/source/seq-gen"
 
 def config_file(wildcards):
     return f"{CONFIG_DIR}/{wildcards.model}_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.mutsig}.cfg"
@@ -105,7 +105,7 @@ rule make_beast_xml:
     output:
         directory(f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}")
     resources:
-        mem_per_cpu =4000,
+        mem_mb_per_cpu = 4000,
         runtime = 30,
         cpus_per_task = 1,
     shell:
@@ -159,7 +159,7 @@ rule combine_runs:
         "beast1/1.10.4",
         "libbeagle",
     resources:
-        mem_per_cpu =4000,
+        mem_mb_per_cpu = 4000,
         runtime = 10,
         cpus_per_task = 1,
     shell:
