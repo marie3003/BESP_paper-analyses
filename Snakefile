@@ -7,8 +7,8 @@
 #   Cluster:   snakemake --profile profiles/euler --rerun-incomplete
 # =============================================================================
 
-SAMPLING_TYPES = ["independent_homochronous", "linear_constant"]
-POP_MODELS     = ["expgrowth_fast", "expgrowth_slow", "uniform", "bottleneck"]
+SAMPLING_TYPES = ["independenthomochronous", "linearconstant"]
+POP_MODELS     = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
 NREPLICATES    = 100
 INFERENCE      = ["constcoal", "skyline"]
 MUTSIGS        = ["lowmutsig", "medmutsig", "highmutsig"]
@@ -19,17 +19,10 @@ BEAST_DIR  = "results/run1/beast_inference"
 CONFIG_DIR = "results/run1/config"
 SEQGEN     = "Seq-Gen-1.3.5/source/seq-gen"
 
-def short(name):
-    return name.replace("_", "")
-
 def config_file(wildcards):
-    return (f"{CONFIG_DIR}/{wildcards.model}_{short(wildcards.sampling)}"
-            f"_{short(wildcards.pop)}_{wildcards.mutsig}.cfg")
+    return f"{CONFIG_DIR}/{wildcards.model}_{wildcards.sampling}_{wildcards.pop}_{wildcards.mutsig}.cfg"
 
-def beast_log(wildcards):
-    return (f"{BEAST_DIR}/{wildcards.model}/{wildcards.sampling}/{wildcards.pop}"
-            f"/{wildcards.mutsig}/{wildcards.model}_{short(wildcards.sampling)}"
-            f"_{short(wildcards.pop)}_{wildcards.mutsig}.T{wildcards.i}.log")
+# No short() helper needed — sampling and pop names already have no internal underscores
 
 
 # =============================================================================
@@ -60,7 +53,7 @@ rule simulate_trees:
     resources:
         mem_mb  = 64000,   # 16 CPUs x 4G
         runtime = 300,     # 5h
-        cpus    = 16,
+        cpus_per_task = 16,
     shell:
         "Rscript {input.script}"
 
@@ -118,11 +111,11 @@ rule make_beast_xml:
 # =============================================================================
 rule run_beast:
     input:
-        xml = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/{{model}}_{short('{{sampling}}')}_{{pop_short}}_{{mutsig}}.T{{i}}.xml",
+        xml     = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.xml",
         xml_dir = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}"
     output:
-        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/seed{{seed}}/{{model}}_{short('{{sampling}}')}_{{pop_short}}_{{mutsig}}.T{{i}}.log",
-        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/seed{{seed}}/{{model}}_{short('{{sampling}}')}_{{pop_short}}_{{mutsig}}.T{{i}}.trees",
+        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.log",
+        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.trees",
     envmodules:
         "stack/2024-06",
         "openjdk/21.0.3_9",
@@ -142,17 +135,17 @@ rule run_beast:
 # =============================================================================
 rule combine_runs:
     input:
-        logs  = expand(
-                    f"{BEAST_DIR}/{{{{model}}}}/{{{{sampling}}}}/{{{{pop}}}}/{{{{mutsig}}}}/seed{{seed}}/{{{{model}}}}_{{short('{{{{sampling}}}}')}}_{{}}_{{{{mutsig}}}}.T{{{{i}}}}.log",
+        logs  = lambda wc: expand(
+                    f"{BEAST_DIR}/{wc.model}/{wc.sampling}/{wc.pop}/{wc.mutsig}/seed{{seed}}/{wc.model}_{wc.sampling}_{wc.pop}_{wc.mutsig}.T{wc.i}.log",
                     seed=SEEDS
                 ),
-        trees = expand(
-                    f"{BEAST_DIR}/{{{{model}}}}/{{{{sampling}}}}/{{{{pop}}}}/{{{{mutsig}}}}/seed{{seed}}/{{{{model}}}}_{{short('{{{{sampling}}}}')}}_{{}}_{{{{mutsig}}}}.T{{{{i}}}}.trees",
+        trees = lambda wc: expand(
+                    f"{BEAST_DIR}/{wc.model}/{wc.sampling}/{wc.pop}/{wc.mutsig}/seed{{seed}}/{wc.model}_{wc.sampling}_{wc.pop}_{wc.mutsig}.T{wc.i}.trees",
                     seed=SEEDS
                 ),
     output:
-        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/combined/{{name}}.T{{i}}.log",
-        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/combined/{{name}}.T{{i}}.trees",
+        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.log",
+        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.trees",
     envmodules:
         "stack/2024-06",
         "openjdk/21.0.3_9",
@@ -185,6 +178,6 @@ rule check_mcmc:
     resources:
         mem_mb  = 32000,   # 16 CPUs x 2G
         runtime = 60,
-        cpus    = 16,
+        cpus_per_task = 16,
     shell:
         "Rscript {input.script}"

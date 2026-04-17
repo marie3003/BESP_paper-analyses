@@ -29,7 +29,7 @@ nlimit      <- 10
 nrsamples   <- 250
 outputbase <- file.path(script_dir, "../results/run1/simulated_data/")
 
-trajectories <- data.frame(row.names  =c("expgrowth_fast", "expgrowth_slow", "uniform", "bottleneck"),
+trajectories <- data.frame(row.names  =c("expgrowthfast", "expgrowthslow", "uniform", "bottleneck"),
                            names      =c("Fast exponential growth", "Slow exponential growth","Uniform", "Bottleneck"),
                            # only used for plotting
                            maxdensity  = c(0.1, 0.1, 0.05, 0.05),
@@ -126,7 +126,7 @@ summariseSims <- function(sims, maxdensity=0.05, maxlineages=100) {
 # simulate trees with independent homogeneous sampling
 
 set.seed(9)
-outputpath <- file.path(outputbase, "independent_homochronous")
+outputpath <- file.path(outputbase, "independenthomochronous")
 for (i in 1:nrow(trajectories)) {
 
   trajname <- rownames(trajectories)[i]
@@ -166,7 +166,7 @@ for (i in 1:nrow(trajectories)) {
 
 # simulate trees with preferential heterogeneous sampling, 1 epoch
 set.seed(9)
-outputpath <- file.path(outputbase, "linear_constant")
+outputpath <- file.path(outputbase, "linearconstant")
 for (i in 1:nrow(trajectories)) {
 
   trajname <- rownames(trajectories)[i]

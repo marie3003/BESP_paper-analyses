@@ -17,7 +17,7 @@ mcmc_successful <- function(log_path, burnin_frac = 0, cutoff = 200) {
 args <- commandArgs(trailingOnly = FALSE)
 script.path <- normalizePath(sub("--file=", "", args[grep("--file=", args)]))
 script_dir <- dirname(script.path)
-parent_folder <- file.path(script_dir, "../results/pop_size_simulations/simulation_results_combined")
+parent_folder <- file.path(script_dir, "../results/run1/beast_inference")
 output_file <- file.path(script_dir, "successful_mcmc_runs.csv")
 
 # Find all .log files recursively
