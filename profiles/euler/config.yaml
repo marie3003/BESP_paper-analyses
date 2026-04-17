@@ -1,11 +1,41 @@
 executor: slurm
 
 default-resources:
-  mem_mb: 4000
-  cpus_per_task: 1
-  runtime: 60
-  slurm_extra: "'--output=logs/{rule}/%A_%a.out --error=logs/{rule}/%A_%a.err'"
+  - mem_mb=4000
+  - cpus_per_task=1
+  - runtime=60
 
-jobs: 200
-latency-wait: 60
+set-resources:
+  simulate_trees:
+    mem_mb: 64000
+    runtime: 300
+    cpus_per_task: 16
+  simulate_alignment:
+    mem_mb: 8000
+    runtime: 180
+    cpus_per_task: 1
+  make_beast_xml:
+    mem_mb: 4000
+    runtime: 30
+    cpus_per_task: 1
+  run_beast:
+    mem_mb: 8000
+    runtime: 960
+    cpus_per_task: 1
+  combine_runs:
+    mem_mb: 4000
+    runtime: 10
+    cpus_per_task: 1
+  check_mcmc:
+    mem_mb: 32000
+    runtime: 60
+    cpus_per_task: 16
+
+jobs: 500
+latency-wait: 30
 rerun-incomplete: true
+
+slurm_extra: "--output=logs/%x_%A_%a.out --error=logs/%x_%A_%a.err"
+
+slurm-array-jobs: "simulate_alignment,run_beast,combine_runs"
+slurm-array-limit: 1000
