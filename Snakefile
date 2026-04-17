@@ -80,8 +80,8 @@ rule simulate_alignment:
     shell:
         """
         TREE=$(sed -n "$(( {wildcards.i} + 1 ))p" {input.trees})
-        TMPNWK=tmp_tree_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.i}.nwk
-        TMPFASTA=tmp_fasta_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.i}.fasta
+        TMPNWK=$(mktemp --suffix=.nwk)
+        TMPFASTA=$(mktemp --suffix=.fasta)
         echo -e "$TREE\n" > $TMPNWK
         {SEQGEN} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l10000000 -s4.6e-8 -n1 \
             < $TMPNWK > $TMPFASTA
