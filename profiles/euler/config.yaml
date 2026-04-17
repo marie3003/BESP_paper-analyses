@@ -6,10 +6,8 @@ default-resources:
   - runtime=60
   - slurm_partition="normal"
 
-jobs: 800
-latency-wait: 30
+jobs: 200
+latency-wait: 60
 rerun-incomplete: true
 
 slurm-logdir: logs
-slurm-array-jobs: "simulate_alignment,run_beast,combine_runs"
-slurm-array-limit: 1000

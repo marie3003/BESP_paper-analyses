@@ -40,6 +40,14 @@ rule all_alignments:
         )
 
 
+rule all_xmls:
+    input:
+        expand(
+            f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}",
+            model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS
+        )
+
+
 # =============================================================================
 # Step 1: Simulate trees
 # =============================================================================
