@@ -2,7 +2,7 @@
 #SBATCH --job-name=seqgen_snp
 #SBATCH --output=logs/simalignment_%A_%a.out
 #SBATCH --error=logs/simalignment_%A_%a.err
-#SBATCH --array=0-299
+#SBATCH --array=0-799
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=8G
 #SBATCH --time=00:30:00
