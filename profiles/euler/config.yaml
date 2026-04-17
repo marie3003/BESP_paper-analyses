@@ -1,0 +1,11 @@
+executor: slurm
+
+default-resources:
+  mem_mb: 4000
+  cpus_per_task: 1
+  runtime: 60
+  slurm_extra: "'--output=logs/{rule}/%A_%a.out --error=logs/{rule}/%A_%a.err'"
+
+jobs: 200
+latency-wait: 60
+rerun-incomplete: true

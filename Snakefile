@@ -77,7 +77,7 @@ rule simulate_alignment:
     resources:
         mem_mb  = 8000,
         runtime = 180,    # 3h
-        cpus    = 1,
+        cpus_per_task = 1,
     shell:
         """
         TREE=$(sed -n "$(( {wildcards.i} + 1 ))p" {input.trees})
@@ -108,7 +108,7 @@ rule make_beast_xml:
     resources:
         mem_mb  = 4000,
         runtime = 30,
-        cpus    = 1,
+        cpus_per_task = 1,
     shell:
         "conda run -n beast_tools python scripts/MakeBEASTXML.py -c {input.config}"
 
@@ -132,7 +132,7 @@ rule run_beast:
     resources:
         mem_mb  = 8000,
         runtime = 960,   # 16h
-        cpus    = 1,
+        cpus_per_task = 1,
     shell:
         "beast -overwrite -seed {wildcards.seed} -working {input.xml}"
 
@@ -162,7 +162,7 @@ rule combine_runs:
     resources:
         mem_mb  = 4000,
         runtime = 10,
-        cpus    = 1,
+        cpus_per_task = 1,
     shell:
         """
         mkdir -p $(dirname {output.log})
