@@ -57,7 +57,7 @@ rule simulate_trees:
         "gcc/12.2.0",
         "r/4.4.0",
     resources:
-        mem_mb  = 64000,   # 16 CPUs x 4G
+        mem_per_cpu =4000,    # 16 CPUs x 4G = 64G total
         runtime = 300,     # 5h
         cpus_per_task = 16,
     shell:
@@ -74,7 +74,7 @@ rule simulate_alignment:
     output:
         snps = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
     resources:
-        mem_mb  = 8000,
+        mem_per_cpu =8000,
         runtime = 180,    # 3h
         cpus_per_task = 1,
     shell:
@@ -105,7 +105,7 @@ rule make_beast_xml:
     output:
         directory(f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}")
     resources:
-        mem_mb  = 4000,
+        mem_per_cpu =4000,
         runtime = 30,
         cpus_per_task = 1,
     shell:
@@ -129,7 +129,7 @@ rule run_beast:
         "beast1/1.10.4",
         "libbeagle",
     resources:
-        mem_mb  = 8000,
+        mem_per_cpu =8000,
         runtime = 960,   # 16h
         cpus_per_task = 1,
     shell:
@@ -159,7 +159,7 @@ rule combine_runs:
         "beast1/1.10.4",
         "libbeagle",
     resources:
-        mem_mb  = 4000,
+        mem_per_cpu =4000,
         runtime = 10,
         cpus_per_task = 1,
     shell:
@@ -182,7 +182,7 @@ rule check_mcmc:
         "stack/2024-06",
         "r/4.4.0",
     resources:
-        mem_mb  = 32000,   # 16 CPUs x 2G
+        mem_per_cpu =2000,    # 16 CPUs x 2G = 32G total
         runtime = 60,
         cpus_per_task = 16,
     shell:
