@@ -20,7 +20,7 @@ CONFIG_DIR = "results/run1/config"
 SEQGEN     = "Seq-Gen-1.3.5/source/seq-gen"
 
 def config_file(wildcards):
-    return f"{CONFIG_DIR}/{wildcards.model}_{wildcards.sampling}_{wildcards.pop}_{wildcards.mutsig}.cfg"
+    return f"{CONFIG_DIR}/{wildcards.model}_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.mutsig}.cfg"
 
 
 # =============================================================================
@@ -35,8 +35,8 @@ rule all:
 rule all_alignments:
     input:
         expand(
-            f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}_{{i}}_snps.fasta",
-            sampling=SAMPLING_TYPES, pop=POP_MODELS, i=range(NREPLICATES)
+            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, i=range(NREPLICATES)
         )
 
 
@@ -49,8 +49,8 @@ rule simulate_trees:
         utils  = "scripts/SimUtils.R",
     output:
         expand(
-            f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}.trees",
-            sampling=SAMPLING_TYPES, pop=POP_MODELS
+            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS
         )
     envmodules:
         "stack/2024-06",
@@ -70,9 +70,9 @@ rule simulate_trees:
 # =============================================================================
 rule simulate_alignment:
     input:
-        trees = f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}.trees",
+        trees = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
     output:
-        snps = f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}_{{i}}_snps.fasta",
+        snps = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
     resources:
         mem_mb  = 8000,
         runtime = 180,    # 3h
@@ -80,8 +80,8 @@ rule simulate_alignment:
     shell:
         """
         TREE=$(sed -n "$(( {wildcards.i} + 1 ))p" {input.trees})
-        TMPNWK=tmp_tree_{wildcards.sampling}_{wildcards.pop}_{wildcards.i}.nwk
-        TMPFASTA=tmp_fasta_{wildcards.sampling}_{wildcards.pop}_{wildcards.i}.fasta
+        TMPNWK=tmp_tree_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.i}.nwk
+        TMPFASTA=tmp_fasta_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.i}.fasta
         echo -e "$TREE\n" > $TMPNWK
         {SEQGEN} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l10000000 -s4.6e-8 -n1 \
             < $TMPNWK > $TMPFASTA
@@ -97,13 +97,13 @@ rule simulate_alignment:
 rule make_beast_xml:
     input:
         snps   = expand(
-                     f"{SIMDATA}/{{{{sampling}}}}/{{{{pop}}}}/{{{{pop}}}}_{{i}}_snps.fasta",
+                     f"{SIMDATA}/{{{{sampling}}}}/{{{{popmodel}}}}/{{{{popmodel}}}}_{{i}}_snps.fasta",
                      i=range(NREPLICATES)
                  ),
-        trees  = f"{SIMDATA}/{{sampling}}/{{pop}}/{{pop}}.trees",
+        trees  = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
         config = config_file,
     output:
-        directory(f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}")
+        directory(f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}")
     resources:
         mem_mb  = 4000,
         runtime = 30,
@@ -117,11 +117,11 @@ rule make_beast_xml:
 # =============================================================================
 rule run_beast:
     input:
-        xml     = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.xml",
-        xml_dir = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}"
+        xml     = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.xml",
+        xml_dir = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}"
     output:
-        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.log",
-        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.trees",
+        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
+        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.trees",
     envmodules:
         "stack/2024-06",
         "openjdk/21.0.3_9",
@@ -142,16 +142,16 @@ rule run_beast:
 rule combine_runs:
     input:
         logs  = lambda wc: expand(
-                    f"{BEAST_DIR}/{wc.model}/{wc.sampling}/{wc.pop}/{wc.mutsig}/seed{{seed}}/{wc.model}_{wc.sampling}_{wc.pop}_{wc.mutsig}.T{wc.i}.log",
+                    f"{BEAST_DIR}/{wc.model}/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/seed{{seed}}/{wc.model}_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{wc.i}.log",
                     seed=SEEDS
                 ),
         trees = lambda wc: expand(
-                    f"{BEAST_DIR}/{wc.model}/{wc.sampling}/{wc.pop}/{wc.mutsig}/seed{{seed}}/{wc.model}_{wc.sampling}_{wc.pop}_{wc.mutsig}.T{wc.i}.trees",
+                    f"{BEAST_DIR}/{wc.model}/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/seed{{seed}}/{wc.model}_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{wc.i}.trees",
                     seed=SEEDS
                 ),
     output:
-        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.log",
-        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{pop}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{pop}}_{{mutsig}}.T{{i}}.trees",
+        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
+        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.trees",
     envmodules:
         "stack/2024-06",
         "openjdk/21.0.3_9",
