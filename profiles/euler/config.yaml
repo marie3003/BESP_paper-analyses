@@ -11,4 +11,3 @@ latency-wait: 60
 rerun-incomplete: true
 
 slurm-logdir: logs
-slurm-keep-logfiles: true 
