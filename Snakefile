@@ -107,6 +107,10 @@ rule snp_summary:
         )
     output:
         f"{SIMDATA}/snp_summary.csv"
+    resources:
+        mem_mb_per_cpu = 2000,
+        runtime = 60,
+        cpus_per_task = 1,
     run:
         import os
         rows = []
