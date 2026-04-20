@@ -83,7 +83,7 @@ rule simulate_alignment:
     output:
         snps = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
     resources:
-        runtime = 180,    # 3h
+        runtime = lambda wildcards: 60 if wildcards.sampling == "independenthomochronous" else 180,
         cpus_per_task = 1,
         mem_mb_per_cpu = 8000,
     shell:
@@ -134,7 +134,7 @@ rule snp_summary:
 
 
 # =============================================================================
-# Step 3: Generate BEAST XML files for one scenario
+# Step 3: Generate BEAST XML files
 # =============================================================================
 rule make_beast_xml:
     input:
@@ -147,7 +147,7 @@ rule make_beast_xml:
     output:
         directory(f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}")
     resources:
-        mem_mb_per_cpu = 4000,
+        mem_mb_per_cpu = 2000,
         runtime = 30,
         cpus_per_task = 1,
     shell:

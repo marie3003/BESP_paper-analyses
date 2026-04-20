@@ -4,8 +4,8 @@
 # Run from the scripts/ directory
 
 OUTDIR="../results/run1/config"
-TEMPLATE_CONSTCOAL="../results/pop_size_simulations/templates/template_constantcoal.xml"
-TEMPLATE_SKYLINE="../results/pop_size_simulations/templates/template_skyline.xml"
+TEMPLATE_CONSTCOAL="results/run1/templates/template_constantcoal.xml"
+TEMPLATE_SKYLINE="results/run1/templates/template_skyline.xml"
 
 mkdir -p "$OUTDIR"
 
@@ -41,7 +41,7 @@ for sampling in "${SAMPLING_TYPES[@]}"; do
         for mutsig in lowmutsig medmutsig highmutsig; do
 
             NSITES=$(get_nsites $mutsig)
-            TREES="../results/run1/simulated_data/${sampling}/${pop}/${pop}.trees"
+            TREES="results/run1/simulated_data/${sampling}/${pop}/${pop}.trees"
             if [ "$sampling" = "independenthomochronous" ]; then
                 HOMOCHRONOUS="True"
             else
@@ -49,7 +49,7 @@ for sampling in "${SAMPLING_TYPES[@]}"; do
             fi
 
             # --- constcoal ---
-            OUTPATH="../results/run1/beast_inference/constcoal/${sampling}/${pop}/${mutsig}/"
+            OUTPATH="results/run1/beast_inference/constcoal/${sampling}/${pop}/${mutsig}/"
             NAME="constcoal_${sampling}_${pop}_${mutsig}"
             FILE="${OUTDIR}/constcoal_${sampling}_${pop}_${mutsig}.cfg"
 
@@ -80,7 +80,7 @@ EOF
             # --- skyline ---
             SKYLINE_CHAIN=$(get_skyline_chainlength $mutsig)
             SKYLINE_LOG=$(get_skyline_logfreq $mutsig)
-            OUTPATH="../results/run1/beast_inference/skyline/${sampling}/${pop}/${mutsig}/"
+            OUTPATH="results/run1/beast_inference/skyline/${sampling}/${pop}/${mutsig}/"
             NAME="skyline_${sampling}_${pop}_${mutsig}"
             FILE="${OUTDIR}/skyline_${sampling}_${pop}_${mutsig}.cfg"
 
