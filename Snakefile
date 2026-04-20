@@ -44,8 +44,8 @@ rule all_alignments:
 rule all_xmls:
     input:
         expand(
-            f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}",
-            model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS
+            f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.xml",
+            model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, i=range(NREPLICATES)
         )
 
 
@@ -145,7 +145,10 @@ rule make_beast_xml:
         trees  = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
         config = config_file,
     output:
-        directory(f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}")
+        expand(
+            f"{BEAST_DIR}/{{{{model}}}}/{{{{sampling}}}}/{{{{popmodel}}}}/{{{{mutsig}}}}/{{{{model}}}}_{{{{sampling}}}}_{{{{popmodel}}}}_{{{{mutsig}}}}.T{{i}}.xml",
+            i=range(NREPLICATES)
+        )
     resources:
         mem_mb_per_cpu = 2000,
         runtime = 30,
