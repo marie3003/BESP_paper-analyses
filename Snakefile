@@ -74,7 +74,7 @@ rule simulate_trees:
 
 
 # =============================================================================
-# Step 2: Simulate alignment with seq-gen and extract SNPs with snp-sites
+# Step 2a: Simulate alignment with seq-gen and extract SNPs with snp-sites
 #         Full fasta is deleted immediately after SNP extraction to save space
 # =============================================================================
 rule simulate_alignment:
@@ -99,6 +99,9 @@ rule simulate_alignment:
         rm $TMPFASTA
         """
 
+# =============================================================================
+# Step 2b: Summarize number of SNPs in each alignment and save to CSV
+# =============================================================================
 rule snp_summary:
     input:
         expand(
@@ -109,7 +112,7 @@ rule snp_summary:
         f"{SIMDATA}/snp_summary.csv"
     resources:
         mem_mb_per_cpu = 2000,
-        runtime = 60,
+        runtime = 10,
         cpus_per_task = 1,
     run:
         import os
