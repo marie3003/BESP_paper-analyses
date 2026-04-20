@@ -37,7 +37,8 @@ rule all_alignments:
         expand(
             f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
             sampling=SAMPLING_TYPES, popmodel=POP_MODELS, i=range(NREPLICATES)
-        )
+        ),
+        f"{SIMDATA}/snp_summary.csv"
 
 
 rule all_xmls:
@@ -97,6 +98,32 @@ rule simulate_alignment:
         conda run -n snp_sites snp-sites -o {output.snps} $TMPFASTA
         rm $TMPFASTA
         """
+
+rule snp_summary:
+    input:
+        expand(
+            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, i=range(NREPLICATES)
+        )
+    output:
+        f"{SIMDATA}/snp_summary.csv"
+    run:
+        import os
+        rows = []
+        for f in input:
+            parts = f.split("/")
+            sampling = parts[-3]
+            popmodel = parts[-2]
+            i = os.path.basename(f).replace("_snps.fasta", "").split("_")[-1]
+            with open(f) as fh:
+                for line in fh:
+                    if not line.startswith(">"):
+                        n_snps = len(line.strip())
+                        break
+            rows.append(f"{sampling},{popmodel},{i},{n_snps}")
+        with open(output[0], "w") as out:
+            out.write("sampling,popmodel,replicate,n_snps\n")
+            out.write("\n".join(rows) + "\n")
 
 
 # =============================================================================
