@@ -28,11 +28,11 @@ get_skyline_logfreq() {
     esac
 }
 
-get_nsites() {
+get_snpfraction() {
     case $1 in
-        lowmutsig)  echo 1000  ;;
-        medmutsig)  echo 5000  ;;
-        highmutsig) echo 10000 ;;
+        lowmutsig)  echo 0.1 ;;
+        medmutsig)  echo 0.5 ;;
+        highmutsig) echo 1.0 ;;
     esac
 }
 
@@ -40,7 +40,7 @@ for sampling in "${SAMPLING_TYPES[@]}"; do
     for pop in "${POP_MODELS[@]}"; do
         for mutsig in lowmutsig medmutsig highmutsig; do
 
-            NSITES=$(get_nsites $mutsig)
+            SNPFRACTION=$(get_snpfraction $mutsig)
             TREES="results/run1/simulated_data/${sampling}/${pop}/${pop}.trees"
             if [ "$sampling" = "independenthomochronous" ]; then
                 HOMOCHRONOUS="True"
@@ -60,7 +60,7 @@ trees    : ${TREES}
 
 # Scenario
 homochronous: ${HOMOCHRONOUS}
-nSites: ${NSITES}
+snpFraction: ${SNPFRACTION}
 
 # Parameters
 clockRate      : 4.6e-8
@@ -91,7 +91,7 @@ trees    : ${TREES}
 
 # Scenario
 homochronous: ${HOMOCHRONOUS}
-nSites: ${NSITES}
+snpFraction: ${SNPFRACTION}
 
 # Parameters
 numPopulationBins  : 10

@@ -36,5 +36,6 @@ scripts/*.out
 scripts/*.err
 scripts/.trees
 scripts/xml_list_*.txt
+scripts/.log
 
 results/run1/simulated_data/**/*_snps.fasta
