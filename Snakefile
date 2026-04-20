@@ -26,10 +26,16 @@ def config_file(wildcards):
 # =============================================================================
 # Rule all — final targets
 # =============================================================================
+def get_summary_trees(wildcards):
+    import pandas as pd
+    csv = checkpoints.check_mcmc.get().output.csv
+    df = pd.read_csv(csv)
+    return [p.replace(".trees", "_summary.tree") for p in df["trees_path"]]
+
+
 rule all:
     input:
-        # Summary trees for all successful MCMC runs (end of pipeline)
-        "scripts/successful_mcmc_runs.csv"
+        get_summary_trees
 
 
 rule all_alignments:
@@ -39,6 +45,14 @@ rule all_alignments:
             sampling=SAMPLING_TYPES, popmodel=POP_MODELS, i=range(NREPLICATES)
         ),
         f"{SIMDATA}/snp_summary.csv"
+
+
+rule all_beast_test:
+    input:
+        expand(
+            f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T0.log",
+            model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, seed=SEEDS
+        )
 
 
 rule all_xmls:
@@ -151,7 +165,7 @@ rule make_beast_xml:
         )
     resources:
         mem_mb_per_cpu = 2000,
-        runtime = 30,
+        runtime = 5, # 5 min per scenario (100 xml files per scenario)
         cpus_per_task = 1,
     shell:
         "conda run -n beast_tools python scripts/MakeBEASTXML.py -c {input.config}"
@@ -162,8 +176,7 @@ rule make_beast_xml:
 # =============================================================================
 rule run_beast:
     input:
-        xml     = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.xml",
-        xml_dir = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}"
+        xml = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.xml",
     output:
         log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
         trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.trees",
@@ -175,7 +188,7 @@ rule run_beast:
         "libbeagle",
     resources:
         mem_mb_per_cpu = 8000,
-        runtime = 960,   # 16h
+        runtime = lambda wildcards, attempt: 480 if wildcards.model == "constcoal" else 960,
         cpus_per_task = 1,
     shell:
         "beast -overwrite -seed {wildcards.seed} -working {input.xml}"
@@ -205,7 +218,7 @@ rule combine_runs:
         "libbeagle",
     resources:
         mem_mb_per_cpu = 4000,
-        runtime = 10,
+        runtime = 5,
         cpus_per_task = 1,
     shell:
         """
@@ -218,7 +231,7 @@ rule combine_runs:
 # =============================================================================
 # Step 6: Check MCMC convergence and create summary trees
 # =============================================================================
-rule check_mcmc:
+checkpoint check_mcmc:
     input:
         script = "scripts/evaluate_mcmc.R",
     output:
@@ -232,3 +245,25 @@ rule check_mcmc:
         cpus_per_task = 16,
     shell:
         "Rscript {input.script}"
+
+
+# =============================================================================
+# Step 7: Run TreeAnnotator on each successful run
+# =============================================================================
+rule make_summary_tree:
+    input:
+        trees = "{path}.trees",
+        csv   = "scripts/successful_mcmc_runs.csv",
+    output:
+        "{path}_summary.tree",
+    envmodules:
+        "stack/2024-06",
+        "openjdk/21.0.3_9",
+        "gcc/12.2.0",
+        "beast1/1.10.4",
+    resources:
+        mem_mb_per_cpu = 4000,
+        runtime = 30,
+        cpus_per_task = 1,
+    shell:
+        "treeannotator -burnin 0 -heights mean {input.trees} {output}"

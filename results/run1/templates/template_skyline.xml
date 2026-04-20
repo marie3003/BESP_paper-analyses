@@ -10,14 +10,12 @@
 	
 
 	<!-- The list of taxa to be analysed (can also include dates/ages).          -->
-	<!-- ntax=200                                                                -->
 	
 	<taxa id="taxa">{$dates}</taxa>
 	
 
 	<!-- The sequence alignment (each sequence refers to a taxon above).         -->
-	<!-- ntax=200 nchar=450                                                      -->
-	
+		
 	<alignment id="alignment" dataType="nucleotide">{$taxa}</alignment>
 	
 	

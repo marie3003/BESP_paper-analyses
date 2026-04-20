@@ -51,7 +51,7 @@ rsync -av --include='*/' --include='*.xml' --exclude='*' \
 /cluster/work/stadler/beckermar/BESP_paper-analyses/results/pop_size_simulations/simulation_results_3/
 ````
 ### Combine runs
-To combine runs, the `combine_runs.sh` script needs to be run. The script assumes that all runs were repeated three times and saved in the `simulation_results`, `simulation_results_2` and `simulation_results_3` folders. A burnin of $10\%$ is applied.
+To combine runs, the `combine_runs.sh` script needs to be run. The script assumes that all runs were repeated three times and saved in the `simulation_results`, `simulation_results_2` and `simulation_results_3` folders. A burnin of $10/%$ is applied.
 
 ### Create summary trees of runs with sufficient ESS
 The `check_mcmc.sh` script select all combined runs that have a sufficiently high ESS (above $200$) considering the combined log and trees files. The successful combined runs are then saved in the `successful_mcmc_runs.csv` file that is created in the `scripts` folder. This file was renamed when downloading to `successful_combined_runs.csv`.  The `check_mcmc.sh`file then automatically runs treeannotator on the successful runs creating summary trees.

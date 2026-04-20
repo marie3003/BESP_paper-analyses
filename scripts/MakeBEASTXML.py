@@ -124,14 +124,6 @@ for filename in sorted(os.listdir(inputpath)):
 
             i += 1
 
-            # Append alignment to combined file with tree-specific headers
-            combined_aln_path = os.path.join(outputpath, "combined_alignments.fasta")
-            with open(aln_path, "r") as aln_in, open(combined_aln_path, "a") as aln_out:
-                for line in aln_in:
-                    if line.startswith(">"):
-                        line = f">T{i}_{line[1:]}"  # Prefix with tree ID
-                    aln_out.write(line)
-
             # Delete temporary files
             os.remove(aln_path)
             
