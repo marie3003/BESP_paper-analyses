@@ -185,7 +185,7 @@ rule run_beast:
         "openjdk/21.0.3_9",
         "gcc/12.2.0",
         "beast1/1.10.4",
-        "libbeagle",
+        "beagle/5.4",
     resources:
         mem_mb_per_cpu = 8000,
         runtime = lambda wildcards, attempt: 480 if wildcards.model == "constcoal" else 960,
@@ -215,7 +215,7 @@ rule combine_runs:
         "openjdk/21.0.3_9",
         "gcc/12.2.0",
         "beast1/1.10.4",
-        "libbeagle",
+        "beagle/5.4",
     resources:
         mem_mb_per_cpu = 4000,
         runtime = 5,
@@ -229,7 +229,10 @@ rule combine_runs:
 
 
 # =============================================================================
-# Step 6: Check MCMC convergence and create summary trees
+# Step 6: Check MCMC convergence and create summary trees.
+# Checkpoint is needed here because we first need to know which runs were
+# successful before we can create the summary trees in the next step.
+# In all other cases we knew which files to expect from the start.
 # =============================================================================
 checkpoint check_mcmc:
     input:
