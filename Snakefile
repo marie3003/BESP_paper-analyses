@@ -191,7 +191,10 @@ rule run_beast:
         runtime = lambda wildcards, attempt: 480 if wildcards.model == "constcoal" else 960,
         cpus_per_task = 1,
     shell:
-        "beast -overwrite -seed {wildcards.seed} -working {input.xml}"
+        """
+        mkdir -p $(dirname {output.log})
+        cd $(dirname {output.log}) && beast -overwrite -seed {wildcards.seed} $OLDPWD/{input.xml}
+        """
 
 
 # =============================================================================
