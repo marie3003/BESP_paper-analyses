@@ -185,7 +185,7 @@ rule run_beast:
         "openjdk/21.0.3_9",
         "gcc/12.2.0",
         "beast1/1.10.4",
-        "beagle/5.4",
+        "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 8000,
         runtime = lambda wildcards, attempt: 480 if wildcards.model == "constcoal" else 960,
@@ -215,7 +215,7 @@ rule combine_runs:
         "openjdk/21.0.3_9",
         "gcc/12.2.0",
         "beast1/1.10.4",
-        "beagle/5.4",
+        "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 4000,
         runtime = 5,
