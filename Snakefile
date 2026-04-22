@@ -75,6 +75,8 @@ rule simulate_trees:
             f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
             sampling=SAMPLING_TYPES, popmodel=POP_MODELS
         )
+    log:
+        "logs/simulate_trees/simulate_trees.log"
     envmodules:
         "stack/2024-06",
         "gcc/12.2.0",
@@ -84,7 +86,7 @@ rule simulate_trees:
         runtime = 300,     # 5h
         cpus_per_task = 16,
     shell:
-        "Rscript {input.script}"
+        "Rscript {input.script} > {log} 2>&1"
 
 
 # =============================================================================
@@ -96,6 +98,8 @@ rule simulate_alignment:
         trees = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
     output:
         snps = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
+    log:
+        "logs/simulate_alignment/{sampling}_{popmodel}_{i}.log"
     resources:
         runtime = lambda wildcards: 60 if wildcards.sampling == "independenthomochronous" else 180,
         cpus_per_task = 1,
@@ -107,9 +111,9 @@ rule simulate_alignment:
         TMPFASTA=$(mktemp --suffix=.fasta)
         echo -e "$TREE\n" > $TMPNWK
         {SEQGEN} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l10000000 -s4.6e-8 -n1 \
-            < $TMPNWK > $TMPFASTA
+            < $TMPNWK > $TMPFASTA 2>> {log}
         rm $TMPNWK
-        conda run -n snp_sites snp-sites -o {output.snps} $TMPFASTA
+        conda run -n snp_sites snp-sites -o {output.snps} $TMPFASTA >> {log} 2>&1
         rm $TMPFASTA
         """
 
@@ -124,6 +128,8 @@ rule snp_summary:
         )
     output:
         f"{SIMDATA}/snp_summary.csv"
+    log:
+        "logs/snp_summary/snp_summary.log"
     resources:
         mem_mb_per_cpu = 2000,
         runtime = 10,
@@ -163,12 +169,14 @@ rule make_beast_xml:
             f"{BEAST_DIR}/{{{{model}}}}/{{{{sampling}}}}/{{{{popmodel}}}}/{{{{mutsig}}}}/{{{{model}}}}_{{{{sampling}}}}_{{{{popmodel}}}}_{{{{mutsig}}}}.T{{i}}.xml",
             i=range(NREPLICATES)
         )
+    log:
+        "logs/make_beast_xml/{model}_{sampling}_{popmodel}_{mutsig}.log"
     resources:
         mem_mb_per_cpu = 2000,
         runtime = 5, # 5 min per scenario (100 xml files per scenario)
         cpus_per_task = 1,
     shell:
-        "conda run -n beast_tools python scripts/MakeBEASTXML.py -c {input.config}"
+        "conda run -n beast_tools python scripts/MakeBEASTXML.py -c {input.config} > {log} 2>&1"
 
 
 # =============================================================================
@@ -180,6 +188,10 @@ rule run_beast:
     output:
         log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
         trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.trees",
+    log:
+        "logs/run_beast/{model}_{sampling}_{popmodel}_{mutsig}_T{i}_seed{seed}.log"
+    benchmark:
+        "benchmarks/run_beast/{model}_{sampling}_{popmodel}_{mutsig}_T{i}_seed{seed}.tsv"
     envmodules:
         "stack/2024-06",
         "openjdk/21.0.3_9",
@@ -188,12 +200,12 @@ rule run_beast:
         "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 8000,
-        runtime = lambda wildcards, attempt: 480 if wildcards.model == "constcoal" else 960,
-        cpus_per_task = 1,
+        runtime = lambda wildcards, attempt: (480 if wildcards.model == "constcoal" else 960) * (2 if wildcards.mutsig == "highmutsig" else 1),
+        cpus_per_task = 2,
     shell:
         """
         mkdir -p $(dirname {output.log})
-        cd $(dirname {output.log}) && beast -overwrite -seed {wildcards.seed} $OLDPWD/{input.xml}
+        cd $(dirname {output.log}) && beast -overwrite -seed {wildcards.seed} $OLDPWD/{input.xml} > $OLDPWD/{log} 2>&1
         """
 
 
@@ -213,6 +225,8 @@ rule combine_runs:
     output:
         log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
         trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.trees",
+    log:
+        "logs/combine_runs/{model}_{sampling}_{popmodel}_{mutsig}_T{i}.log"
     envmodules:
         "stack/2024-06",
         "openjdk/21.0.3_9",
@@ -226,8 +240,8 @@ rule combine_runs:
     shell:
         """
         mkdir -p $(dirname {output.log})
-        logcombiner -burnin 1000 {input.logs} {output.log}
-        logcombiner -trees -burnin 1000 {input.trees} {output.trees}
+        logcombiner -burnin 1000 {input.logs} {output.log} > {log} 2>&1
+        logcombiner -trees -burnin 1000 {input.trees} {output.trees} >> {log} 2>&1
         """
 
 
@@ -242,6 +256,8 @@ checkpoint check_mcmc:
         script = "scripts/evaluate_mcmc.R",
     output:
         csv = "scripts/successful_mcmc_runs.csv",
+    log:
+        "logs/check_mcmc/check_mcmc.log"
     envmodules:
         "stack/2024-06",
         "r/4.4.0",
@@ -250,7 +266,7 @@ checkpoint check_mcmc:
         runtime = 60,
         cpus_per_task = 16,
     shell:
-        "Rscript {input.script}"
+        "Rscript {input.script} > {log} 2>&1"
 
 
 # =============================================================================
@@ -262,6 +278,8 @@ rule make_summary_tree:
         csv   = "scripts/successful_mcmc_runs.csv",
     output:
         "{path}_summary.tree",
+    log:
+        "logs/make_summary_tree/{path}_summary.log"
     envmodules:
         "stack/2024-06",
         "openjdk/21.0.3_9",
@@ -272,4 +290,4 @@ rule make_summary_tree:
         runtime = 30,
         cpus_per_task = 1,
     shell:
-        "treeannotator -burnin 0 -heights mean {input.trees} {output}"
+        "treeannotator -burnin 0 -heights mean {input.trees} {output} > {log} 2>&1"
