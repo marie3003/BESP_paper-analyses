@@ -199,9 +199,10 @@ rule run_beast:
         "beast1/1.10.4",
         "libbeagle/3.1.2",
     resources:
-        mem_mb_per_cpu = 8000,
+        mem_mb_per_cpu = 1000,
         runtime = lambda wildcards, attempt: (480 if wildcards.model == "constcoal" else 960) * (2 if wildcards.mutsig == "highmutsig" else 1),
         cpus_per_task = 2,
+        slurm_jobname = lambda wildcards: f"{wildcards.model}_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.mutsig}_T{wildcards.i}_s{wildcards.seed}",
     shell:
         """
         mkdir -p $(dirname {output.log})

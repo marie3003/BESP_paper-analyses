@@ -130,7 +130,7 @@ def pars_dates(tree, pars):
         heights = np.array([tree_.distance(leaf) for leaf in leaves])
         treetimes = np.max(heights) - heights
         for i, leaf in enumerate(leaves):
-            output_dates.write(f'\n\t\t<taxon id = "{leaf.name}"> <date value="{treetimes[i]}" direction="backwards" units="years"/> </taxon>')
+            output_dates.write(f'\n\t\t<taxon id = "{leaf.name}"> <date value="{treetimes[i]:.4f}" direction="backwards" units="years"/> </taxon>')
 
     pars["dates"] = output_dates.getvalue()
 
