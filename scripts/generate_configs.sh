@@ -13,19 +13,44 @@ SAMPLING_TYPES=("independenthomochronous" "linearconstant")
 POP_MODELS=("expgrowthfast" "expgrowthslow" "uniform" "bottleneck")
 
 get_skyline_chainlength() {
-    case $1 in
-        lowmutsig)  echo 120000000 ;;
-        medmutsig)  echo 80000000  ;;
-        highmutsig) echo 80000000  ;;
-    esac
+    local sampling=$1 pop=$2 mutsig=$3
+    if [ "$sampling" = "linearconstant" ]; then
+        case "${pop}_${mutsig}" in
+            expgrowthfast_lowmutsig)  echo 80000000  ;;
+            expgrowthfast_medmutsig)  echo 80000000  ;;
+            expgrowthfast_highmutsig) echo 80000000  ;;
+            expgrowthslow_lowmutsig)  echo 120000000 ;;
+            expgrowthslow_medmutsig)  echo 80000000  ;;
+            expgrowthslow_highmutsig) echo 80000000  ;;
+            uniform_lowmutsig)        echo 80000000  ;;
+            uniform_medmutsig)        echo 80000000  ;;
+            uniform_highmutsig)       echo 80000000  ;;
+            bottleneck_lowmutsig)     echo 120000000 ;;
+            bottleneck_medmutsig)     echo 120000000 ;;
+            bottleneck_highmutsig)    echo 160000000 ;;
+        esac
+    else
+        # independenthomochronous: per popmodel+mutsig
+        case "${pop}_${mutsig}" in
+            expgrowthfast_lowmutsig)  echo 140000000 ;;
+            expgrowthfast_medmutsig)  echo 80000000  ;;
+            expgrowthfast_highmutsig) echo 40000000  ;;
+            expgrowthslow_lowmutsig)  echo 200000000 ;;
+            expgrowthslow_medmutsig)  echo 80000000  ;;
+            expgrowthslow_highmutsig) echo 40000000  ;;
+            uniform_lowmutsig)        echo 150000000 ;;
+            uniform_medmutsig)        echo 80000000  ;;
+            uniform_highmutsig)       echo 40000000  ;;
+            bottleneck_lowmutsig)     echo 200000000 ;;
+            bottleneck_medmutsig)     echo 160000000 ;;
+            bottleneck_highmutsig)    echo 160000000 ;;
+        esac
+    fi
 }
 
 get_skyline_logfreq() {
-    case $1 in
-        lowmutsig)  echo 12000 ;;
-        medmutsig)  echo 8000  ;;
-        highmutsig) echo 8000  ;;
-    esac
+    local chain=$(get_skyline_chainlength $1 $2 $3)
+    echo $((chain / 10000))
 }
 
 get_snpfraction() {
@@ -49,6 +74,13 @@ for sampling in "${SAMPLING_TYPES[@]}"; do
             fi
 
             # --- constcoal ---
+            if [ "$sampling" = "linearconstant" ]; then
+                CONSTCOAL_CHAIN=30000000
+                CONSTCOAL_LOG=3000
+            else
+                CONSTCOAL_CHAIN=10000000
+                CONSTCOAL_LOG=1000
+            fi
             OUTPATH="results/run1/beast_inference/constcoal/${sampling}/${pop}/${mutsig}/"
             NAME="constcoal_${sampling}_${pop}_${mutsig}"
             FILE="${OUTDIR}/constcoal_${sampling}_${pop}_${mutsig}.cfg"
@@ -67,10 +99,10 @@ clockRate      : 4.6e-8
 initialPopSize : 1000
 
 # Analysis
-chainlength        : 10000000
-filelog            : 1000
-screenlog          : 1000
-treelog            : 1000
+chainlength        : ${CONSTCOAL_CHAIN}
+filelog            : ${CONSTCOAL_LOG}
+screenlog          : ${CONSTCOAL_LOG}
+treelog            : ${CONSTCOAL_LOG}
 
 # Output
 name       : ${NAME}
@@ -78,8 +110,8 @@ outputpath : ${OUTPATH}
 EOF
 
             # --- skyline ---
-            SKYLINE_CHAIN=$(get_skyline_chainlength $mutsig)
-            SKYLINE_LOG=$(get_skyline_logfreq $mutsig)
+            SKYLINE_CHAIN=$(get_skyline_chainlength $sampling $pop $mutsig)
+            SKYLINE_LOG=$(get_skyline_logfreq $sampling $pop $mutsig)
             OUTPATH="results/run1/beast_inference/skyline/${sampling}/${pop}/${mutsig}/"
             NAME="skyline_${sampling}_${pop}_${mutsig}"
             FILE="${OUTDIR}/skyline_${sampling}_${pop}_${mutsig}.cfg"

@@ -121,7 +121,6 @@
 		<treeModel idref="treeModel"/>
 		<strictClockBranchRates idref="branchRates"/>
 	</treeDataLikelihood>
-	
 
 	<!-- Define operators                                                        -->
 	<operators id="operators" optimizationSchedule="default">
