@@ -5,9 +5,10 @@ default-resources:
   - cpus_per_task=1
   - runtime=60
   - slurm_partition="normal"
+  - slurm_jobname="smk_{rule}"
 
 jobs: 200
-latency-wait: 60
+latency-wait: 30
 rerun-incomplete: true
 
 slurm-logdir: logs
