@@ -622,6 +622,9 @@
 
 	<!-- Define operators                                                        -->
 	<operators id="operators" optimizationSchedule="default">
+		<scaleOperator scaleFactor="0.95" scaleAll="true" ignoreBounds="false" weight="3">
+			<parameter idref="treeModel.allInternalNodeHeights"/>
+		</scaleOperator>
 		<scaleOperator scaleFactor="0.75" weight="3">
 			<parameter idref="treeModel.rootHeight"/>
 		</scaleOperator>
