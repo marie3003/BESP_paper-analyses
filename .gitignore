@@ -15,7 +15,7 @@ logs/
 .Rprofile
 BESP_paper-analyses.Rproj
 renv/library/
-workflows/combined_branch_lengths.csv
+
 results/pop_size_simulations/simulation_results/
 results/pop_size_simulations/simulation_results_old/
 results/pop_size_simulations/simulation_results_new/
@@ -26,11 +26,12 @@ results/pop_size_simulations/simulation_results_combined/
 results/pop_size_simulations_new_param/
 results/simulations_plots/
 results/pop_size_simulations/evaluation/
-results/test/
-scripts/CreateSamplingTimes.R
+
 workflows/old_code.py
 workflows/simulate_trees_popEffect.Rmd
+workflows/combined_branch_lengths.csv
 
+scripts/CreateSamplingTimes.R
 scripts/logs/
 scripts/*.out
 scripts/*.err
