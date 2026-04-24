@@ -622,9 +622,9 @@
 
 	<!-- Define operators                                                        -->
 	<operators id="operators" optimizationSchedule="default">
-		<scaleOperator scaleFactor="0.75" scaleAll="true" ignoreBounds="false" weight="1">
+		<randomWalkOperator windowSize="1.0" weight="1" autoOptimize="true" boundaryCondition="reflecting">                                                                                                                                                       
 			<parameter idref="treeModel.allInternalNodeHeights"/>
-		</scaleOperator>
+		</randomWalkOperator>  
 		<scaleOperator scaleFactor="0.75" weight="1">
 			<parameter idref="treeModel.rootHeight"/>
 		</scaleOperator>
