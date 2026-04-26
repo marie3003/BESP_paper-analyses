@@ -27,23 +27,23 @@ get_skyline_chainlength() {
             uniform_highmutsig)       echo 80000000  ;;
             bottleneck_lowmutsig)     echo 120000000 ;;
             bottleneck_medmutsig)     echo 120000000 ;;
-            bottleneck_highmutsig)    echo 160000000 ;;
+            bottleneck_highmutsig)    echo 200000000 ;;
         esac
     else
         # independenthomochronous: per popmodel+mutsig
         case "${pop}_${mutsig}" in
-            expgrowthfast_lowmutsig)  echo 140000000 ;;
+            expgrowthfast_lowmutsig)  echo 200000000 ;;
             expgrowthfast_medmutsig)  echo 80000000  ;;
             expgrowthfast_highmutsig) echo 40000000  ;;
-            expgrowthslow_lowmutsig)  echo 200000000 ;;
+            expgrowthslow_lowmutsig)  echo 250000000 ;;
             expgrowthslow_medmutsig)  echo 80000000  ;;
             expgrowthslow_highmutsig) echo 40000000  ;;
-            uniform_lowmutsig)        echo 150000000 ;;
-            uniform_medmutsig)        echo 80000000  ;;
+            uniform_lowmutsig)        echo 200000000 ;;
+            uniform_medmutsig)        echo 150000000 ;;
             uniform_highmutsig)       echo 40000000  ;;
             bottleneck_lowmutsig)     echo 200000000 ;;
-            bottleneck_medmutsig)     echo 160000000 ;;
-            bottleneck_highmutsig)    echo 160000000 ;;
+            bottleneck_medmutsig)     echo 200000000 ;;
+            bottleneck_highmutsig)    echo 200000000 ;;
         esac
     fi
 }
@@ -74,13 +74,8 @@ for sampling in "${SAMPLING_TYPES[@]}"; do
             fi
 
             # --- constcoal ---
-            if [ "$sampling" = "linearconstant" ]; then
-                CONSTCOAL_CHAIN=30000000
-                CONSTCOAL_LOG=3000
-            else
-                CONSTCOAL_CHAIN=10000000
-                CONSTCOAL_LOG=1000
-            fi
+            CONSTCOAL_CHAIN=30000000
+            CONSTCOAL_LOG=3000
             OUTPATH="results/run1/beast_inference/constcoal/${sampling}/${pop}/${mutsig}/"
             NAME="constcoal_${sampling}_${pop}_${mutsig}"
             FILE="${OUTDIR}/constcoal_${sampling}_${pop}_${mutsig}.cfg"
