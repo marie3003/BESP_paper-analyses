@@ -7,7 +7,7 @@ default-resources:
   - slurm_partition="normal"
   - slurm_jobname="smk_{rule}"
 
-jobs: 200
+jobs: 800
 latency-wait: 30
 rerun-incomplete: true
 
