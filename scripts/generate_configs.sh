@@ -16,34 +16,34 @@ get_skyline_chainlength() {
     local sampling=$1 pop=$2 mutsig=$3
     if [ "$sampling" = "linearconstant" ]; then
         case "${pop}_${mutsig}" in
-            expgrowthfast_lowmutsig)  echo 80000000  ;;
+            expgrowthfast_lowmutsig)  echo 120000000  ;;
             expgrowthfast_medmutsig)  echo 80000000  ;;
             expgrowthfast_highmutsig) echo 80000000  ;;
             expgrowthslow_lowmutsig)  echo 120000000 ;;
             expgrowthslow_medmutsig)  echo 80000000  ;;
             expgrowthslow_highmutsig) echo 80000000  ;;
-            uniform_lowmutsig)        echo 80000000  ;;
+            uniform_lowmutsig)        echo 120000000  ;;
             uniform_medmutsig)        echo 80000000  ;;
             uniform_highmutsig)       echo 80000000  ;;
-            bottleneck_lowmutsig)     echo 120000000 ;;
-            bottleneck_medmutsig)     echo 120000000 ;;
+            bottleneck_lowmutsig)     echo 200000000 ;;
+            bottleneck_medmutsig)     echo 200000000 ;;
             bottleneck_highmutsig)    echo 200000000 ;;
         esac
     else
         # independenthomochronous: per popmodel+mutsig
         case "${pop}_${mutsig}" in
-            expgrowthfast_lowmutsig)  echo 200000000 ;;
-            expgrowthfast_medmutsig)  echo 80000000  ;;
-            expgrowthfast_highmutsig) echo 40000000  ;;
-            expgrowthslow_lowmutsig)  echo 250000000 ;;
-            expgrowthslow_medmutsig)  echo 80000000  ;;
-            expgrowthslow_highmutsig) echo 40000000  ;;
-            uniform_lowmutsig)        echo 200000000 ;;
-            uniform_medmutsig)        echo 150000000 ;;
-            uniform_highmutsig)       echo 40000000  ;;
-            bottleneck_lowmutsig)     echo 200000000 ;;
-            bottleneck_medmutsig)     echo 200000000 ;;
-            bottleneck_highmutsig)    echo 200000000 ;;
+            expgrowthfast_lowmutsig)  echo 300000000 ;;
+            expgrowthfast_medmutsig)  echo 100000000  ;;
+            expgrowthfast_highmutsig) echo 50000000  ;;
+            expgrowthslow_lowmutsig)  echo 300000000 ;;
+            expgrowthslow_medmutsig)  echo 100000000  ;;
+            expgrowthslow_highmutsig) echo 50000000  ;;
+            uniform_lowmutsig)        echo 300000000 ;;
+            uniform_medmutsig)        echo 100000000 ;;
+            uniform_highmutsig)       echo 50000000  ;;
+            bottleneck_lowmutsig)     echo 300000000 ;;
+            bottleneck_medmutsig)     echo 300000000 ;;
+            bottleneck_highmutsig)    echo 300000000 ;;
         esac
     fi
 }

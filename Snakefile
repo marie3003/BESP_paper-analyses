@@ -55,6 +55,14 @@ rule all_beast_test:
         )
 
 
+rule all_beast:
+    input:
+        expand(
+            f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
+            model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, seed=SEEDS, i=range(NREPLICATES)
+        )
+
+
 rule all_xmls:
     input:
         expand(
