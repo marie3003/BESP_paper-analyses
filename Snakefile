@@ -26,16 +26,9 @@ def config_file(wildcards):
 # =============================================================================
 # Rule all — final targets
 # =============================================================================
-def get_summary_trees(wildcards):
-    import pandas as pd
-    csv = checkpoints.check_mcmc.get().output.csv
-    df = pd.read_csv(csv)
-    return [p.replace(".trees", "_summary.tree") for p in df["trees_path"]]
-
-
 rule all:
     input:
-        get_summary_trees
+        "scripts/successful_mcmc_runs.csv"
 
 
 rule all_alignments:
@@ -232,8 +225,8 @@ rule combine_runs:
                     seed=SEEDS
                 ),
     output:
-        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
-        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/combined/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.trees",
+        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.log",
+        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.trees",
     log:
         "logs/combine_runs/{model}_{sampling}_{popmodel}_{mutsig}_T{i}.log"
     envmodules:
@@ -243,7 +236,7 @@ rule combine_runs:
         "beast1/1.10.4",
         "libbeagle/3.1.2",
     resources:
-        mem_mb_per_cpu = 4000,
+        mem_mb_per_cpu = 2000,
         runtime = 5,
         cpus_per_task = 1,
     shell:
@@ -255,48 +248,63 @@ rule combine_runs:
 
 
 # =============================================================================
-# Step 6: Check MCMC convergence and create summary trees.
-# Checkpoint is needed here because we first need to know which runs were
-# successful before we can create the summary trees in the next step.
-# In all other cases we knew which files to expect from the start.
-# =============================================================================
-checkpoint check_mcmc:
-    input:
-        script = "scripts/evaluate_mcmc.R",
-    output:
-        csv = "scripts/successful_mcmc_runs.csv",
-    log:
-        "logs/check_mcmc/check_mcmc.log"
-    envmodules:
-        "stack/2024-06",
-        "r/4.4.0",
-    resources:
-        mem_mb_per_cpu = 2000,
-        runtime = 60,
-        cpus_per_task = 16,
-    shell:
-        "Rscript {input.script} > {log} 2>&1"
-
-
-# =============================================================================
-# Step 7: Run TreeAnnotator on each successful run
+# Step 6: Check ESS and create summary tree in one step.
+# If ESS passes, treeannotator is run; otherwise an empty file is created.
 # =============================================================================
 rule make_summary_tree:
     input:
-        trees = "{path}.trees",
-        csv   = "scripts/successful_mcmc_runs.csv",
+        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.log",
+        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.trees",
     output:
-        "{path}_summary.tree",
+        f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined_summary.tree",
     log:
-        "logs/make_summary_tree/{path}_summary.log"
+        "logs/make_summary_tree/{model}_{sampling}_{popmodel}_{mutsig}_T{i}.log"
     envmodules:
         "stack/2024-06",
+        "r/4.4.0",
         "openjdk/21.0.3_9",
         "gcc/12.2.0",
         "beast1/1.10.4",
+        "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 4000,
-        runtime = 30,
+        runtime = 45,
         cpus_per_task = 1,
     shell:
-        "treeannotator -burnin 0 -heights mean {input.trees} {output} > {log} 2>&1"
+        """
+        ESS_OK=$(Rscript -e "
+          library(coda); library(beastio)
+          mcmc <- readLog('{input.log}', burnin = 0)
+          low <- checkESS(mcmc, cutoff = 200, value = TRUE)
+          cat(if (length(low) == 0) 'yes' else 'no')
+        ")
+        if [ "$ESS_OK" = "yes" ]; then
+            treeannotator -burnin 0 -heights median {input.trees} {output} > {log} 2>&1
+        else
+            echo "ESS check failed" > {log}
+            touch {output}
+        fi
+        """
+
+
+# =============================================================================
+# Step 7: Collect all successful summary trees into a CSV
+# =============================================================================
+rule build_csv:
+    input:
+        expand(
+            f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined_summary.tree",
+            model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, i=range(NREPLICATES)
+        )
+    output:
+        csv = "scripts/successful_mcmc_runs.csv",
+    run:
+        import os
+        rows = []
+        for f in input:
+            if os.path.getsize(f) > 0:
+                trees_path = f.replace("_summary.tree", ".combined.trees")
+                rows.append(f"{trees_path}")
+        with open(output.csv, "w") as out:
+            out.write("trees_path\n")
+            out.write("\n".join(rows) + "\n")

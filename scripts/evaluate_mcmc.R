@@ -7,7 +7,7 @@ mcmc_successful <- function(log_path, burnin_frac = 0, cutoff = 200) {
   mcmc <- readLog(log_path, burnin = burnin_frac)
   low_ess <- checkESS(mcmc, cutoff = cutoff, value = TRUE)
   if (length(low_ess) == 0) {
-    trees_path <- sub("\\.log$", ".trees", log_path)
+    trees_path <- sub("\\.combined\\.log$", ".combined.trees", log_path)
     return(data.frame(trees_path = trees_path, burnin = floor(nrow(mcmc) * burnin_frac)))
   } else {
     return(NULL)
@@ -21,7 +21,7 @@ parent_folder <- file.path(script_dir, "../results/run1/beast_inference")
 output_file <- file.path(script_dir, "successful_mcmc_runs.csv")
 
 # Find all .log files recursively
-log_files <- list.files(parent_folder, pattern = "\\.log$", full.names = TRUE, recursive = TRUE)
+log_files <- list.files(parent_folder, pattern = "\\.combined\\.log$", full.names = TRUE, recursive = TRUE)
 
 # Evaluate each log file
 results <- do.call(rbind, mclapply(log_files, mcmc_successful, mc.cores = 16))
