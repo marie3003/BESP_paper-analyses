@@ -7,4 +7,4 @@
 
 conda activate snakemake
 
-snakemake all --keep-incomplete --scheduler greedy --profile profiles/euler
+snakemake all --keep-incomplete --keep-going --scheduler greedy --profile profiles/euler

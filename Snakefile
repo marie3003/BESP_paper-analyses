@@ -22,6 +22,27 @@ SEQGEN     = workflow.basedir + "/../Seq-Gen-1.3.5/source/seq-gen"
 def config_file(wildcards):
     return f"{CONFIG_DIR}/{wildcards.model}_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.mutsig}.cfg"
 
+def get_burnin(wildcards):
+    """Return 10% burnin in states for logcombiner."""
+    if wildcards.model == "constcoal":
+        return 3000000        # 10% of 30M
+    if wildcards.sampling == "independenthomochronous":
+        if wildcards.popmodel == "bottleneck":
+            return 30000000   # 10% of 300M (all mutsigs)
+        elif wildcards.mutsig == "highmutsig":
+            return 5000000    # 10% of 50M
+        elif wildcards.mutsig == "medmutsig":
+            return 10000000   # 10% of 100M
+        else:                 # lowmutsig
+            return 30000000   # 10% of 300M
+    else:  # linearconstant
+        if wildcards.popmodel == "bottleneck":
+            return 20000000   # 10% of 200M
+        elif wildcards.mutsig == "lowmutsig":
+            return 12000000   # 10% of 120M
+        else:
+            return 8000000    # 10% of 80M
+
 
 # =============================================================================
 # Rule all — final targets
@@ -235,6 +256,8 @@ rule combine_runs:
         "gcc/12.2.0",
         "beast1/1.10.4",
         "libbeagle/3.1.2",
+    params:
+        burnin = get_burnin,
     resources:
         mem_mb_per_cpu = 2000,
         runtime = 60,
@@ -242,8 +265,8 @@ rule combine_runs:
     shell:
         """
         mkdir -p $(dirname {output.log})
-        logcombiner -burnin 1000 {input.logs} {output.log} > {log} 2>&1
-        logcombiner -trees -burnin 1000 {input.trees} {output.trees} >> {log} 2>&1
+        logcombiner -burnin {params.burnin} {input.logs} {output.log} > {log} 2>&1
+        logcombiner -trees -burnin {params.burnin} {input.trees} {output.trees} >> {log} 2>&1
         """
 
 
@@ -268,7 +291,7 @@ rule make_summary_tree:
         "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 4000,
-        runtime = 45,
+        runtime = 75,
         cpus_per_task = 1,
     shell:
         """
