@@ -2,7 +2,7 @@
 #SBATCH --job-name=snakemake_main
 #SBATCH --output=snakemake.log
 #SBATCH --error=snakemake.log
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --mem-per-cpu=2G
 
 conda activate snakemake

@@ -237,7 +237,7 @@ rule combine_runs:
         "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 2000,
-        runtime = 5,
+        runtime = 30,
         cpus_per_task = 1,
     shell:
         """
