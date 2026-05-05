@@ -237,7 +237,7 @@ rule combine_runs:
         "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 2000,
-        runtime = 30,
+        runtime = 60,
         cpus_per_task = 1,
     shell:
         """
@@ -272,18 +272,14 @@ rule make_summary_tree:
         cpus_per_task = 1,
     shell:
         """
-        ESS_OK=$(Rscript -e "
+        Rscript -e "
           library(coda); library(beastio)
           mcmc <- readLog('{input.log}', burnin = 0)
           low <- checkESS(mcmc, cutoff = 200, value = TRUE)
-          cat(if (length(low) == 0) 'yes' else 'no')
-        ")
-        if [ "$ESS_OK" = "yes" ]; then
-            treeannotator -burnin 0 -heights median {input.trees} {output} > {log} 2>&1
-        else
-            echo "ESS check failed" > {log}
-            touch {output}
-        fi
+          if (length(low) > 0) stop('ESS check failed')
+        " >> {log} 2>&1 && \
+        treeannotator -burnin 0 -heights median {input.trees} {output} >> {log} 2>&1 || \
+        {{ echo "ESS check failed" >> {log}; touch {output}; }}
         """
 
 
