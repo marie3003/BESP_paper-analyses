@@ -633,35 +633,14 @@ def add_population_size_errors(node_df, tree_df):
     error_df = merged_df.apply(compute_errors, axis=1)
     result = pd.concat([merged_df, error_df], axis=1)
 
+    result['cum_pop_size_abs_error'] = np.abs(result['cum_pop_size_error'])
+    result['cum_pop_size_error_relsim'] = result['cum_pop_size_error'] / result['cum_pop_size_sim']
+
     list_cols = ['skyline_times', 'skyline_medians', 'skyline_cumulative_medians',
                  'skyline_lowers', 'skyline_uppers', 'skyline_samples', 'coalescent_samples',
                  'tree_path_constcoal', 'log_path_constcoal', 'tree_path_skyline',
                  'log_path_skyline', 'sim_tree_path']
     return result.drop(columns=[c for c in list_cols if c in result.columns])
-
-def normalize_by_root_error(df):
-    """
-    Normalize cumulative population size errors by the error at the root node
-    (internal_0), making errors comparable across trees with different timescales.
-
-    Adds column rel_cum_pop_size_error = cum_pop_size_error / root_cum_pop_size_error.
-    """
-    group_cols = ['tree_index', 'model', 'population_model', 'mutation_signal', 'sampling']
-
-    # Get root error per group (node == 'internal_0')
-    root_errors = (
-        df[df['node'] == 'internal_0']
-        .set_index(group_cols)['cum_pop_size_error']
-        .rename('root_cum_pop_size_error')
-    )
-
-    # Merge root error into the full DataFrame
-    df = df.merge(root_errors, on=group_cols, how='left')
-
-    # Normalize
-    df['rel_cum_pop_size_error'] = df['cum_pop_size_error'] / df['root_cum_pop_size_error']
-    
-    return df
 
 def get_root_height_df(tree_metrics_combined):
     """Extract root node rows and drop branch length columns, returning one row per replicate per model."""
@@ -809,6 +788,91 @@ def plot_ci_coverage_heatmap(root_height_df_wide, title="Root Height CI Coverage
         cbar_ax = fig2.add_axes([0.94, 0.15, 0.02, 0.7])
         cbar = fig2.colorbar(sm, cax=cbar_ax)
         cbar.set_label("Fraction of replicates", fontsize=9)
+        cbar.ax.tick_params(labelsize=8)
+        plt.show()
+
+
+def plot_ci_coverage_heatmap_nodes(tree_metrics_combined, mode="height", title=None):
+    """
+    CI coverage contingency heatmap from full tree_metrics_combined.
+
+    mode="height": node height CI coverage, tips excluded (internal nodes only)
+    mode="bl":     branch length CI coverage, root excluded (non-root nodes only)
+
+    For each mutsig × popmodel condition, shows a 2×2 heatmap of fraction of
+    nodes where constcoal and skyline CIs contain the true value.
+    One plot per sampling type.
+    """
+    if mode == "height":
+        ci_col = "height_inside_ci"
+        df = tree_metrics_combined[tree_metrics_combined["internal"] == True].copy()
+        default_title = "Node Height CI Coverage (internal nodes)"
+    elif mode == "bl":
+        ci_col = "bl_inside_ci"
+        df = tree_metrics_combined[tree_metrics_combined["node"] != "internal_0"].copy()
+        default_title = "Branch Length CI Coverage (non-root nodes)"
+    else:
+        raise ValueError("mode must be 'height' or 'bl'")
+
+    title = title or default_title
+    mutsig_order = ["low", "med", "high"]
+    pop_model_order = ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
+    samplings = ["independenthomochronous", "linearconstant"]
+
+    _cmap_colors = ["#b5d2f2", "#7394c2", "#397398", "#80557e", "#d991b4", "#a6444f"]
+    cmap_r = plt.matplotlib.colors.LinearSegmentedColormap.from_list("event_cmap", _cmap_colors).reversed()
+
+    for sampling in samplings:
+        df_s = df[df["sampling"] == sampling].copy()
+
+        # Pivot so each row has both constcoal and skyline CI columns
+        constcoal = df_s[df_s["model"] == "constcoal"][
+            ["population_model", "mutation_signal", "tree_index", "node", ci_col]
+        ].rename(columns={ci_col: "ci_constcoal"})
+        skyline = df_s[df_s["model"] == "skyline"][
+            ["population_model", "mutation_signal", "tree_index", "node", ci_col]
+        ].rename(columns={ci_col: "ci_skyline"})
+
+        merged = constcoal.merge(skyline, on=["population_model", "mutation_signal", "tree_index", "node"])
+        merged["ci_constcoal"] = merged["ci_constcoal"].astype(bool)
+        merged["ci_skyline"]   = merged["ci_skyline"].astype(bool)
+        merged["both"]           = merged["ci_constcoal"] & merged["ci_skyline"]
+        merged["only constcoal"] = merged["ci_constcoal"] & ~merged["ci_skyline"]
+        merged["only skyline"]   = ~merged["ci_constcoal"] & merged["ci_skyline"]
+        merged["neither"]        = ~merged["ci_constcoal"] & ~merged["ci_skyline"]
+
+        fig, axes = plt.subplots(len(mutsig_order), len(pop_model_order),
+                                 figsize=(2.5 * len(pop_model_order), 2.5 * len(mutsig_order)))
+
+        for i, mutsig in enumerate(mutsig_order):
+            for j, pop_model in enumerate(pop_model_order):
+                ax = axes[i, j]
+                subset = merged[(merged["mutation_signal"] == mutsig) & (merged["population_model"] == pop_model)]
+                n = max(len(subset), 1)
+
+                matrix = pd.DataFrame(
+                    [[subset["only skyline"].sum(), subset["both"].sum()],
+                     [subset["neither"].sum(), subset["only constcoal"].sum()]],
+                    index=["Skyline ✓", "Skyline ✗"],
+                    columns=["Constcoal ✗", "Constcoal ✓"],
+                    dtype=float
+                ) / n
+
+                sns.heatmap(matrix, ax=ax, vmin=0, vmax=1, annot=True, fmt=".2f",
+                            cmap=cmap_r, linewidths=0.5, cbar=False)
+                if i == 0: ax.set_title(pop_model, fontsize=9)
+                if j == 0: ax.set_ylabel(f"{mutsig}", fontsize=9)
+                else: ax.set_ylabel("")
+                ax.set_xlabel("")
+                ax.tick_params(labelsize=8)
+                ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
+
+        fig.suptitle(f"{title} ({sampling})", fontsize=14)
+        plt.tight_layout(rect=[0, 0, 0.92, 1])
+        sm = plt.cm.ScalarMappable(cmap=cmap_r, norm=plt.Normalize(vmin=0, vmax=1))
+        cbar_ax = fig.add_axes([0.94, 0.15, 0.02, 0.7])
+        cbar = fig.colorbar(sm, cax=cbar_ax)
+        cbar.set_label("Fraction of nodes", fontsize=9)
         cbar.ax.tick_params(labelsize=8)
         plt.show()
 
@@ -1303,7 +1367,9 @@ def plot_height_errors_by_time_bin(ax, df_sub, t_max, bins=10, bin_width=None, e
     if add_legend:
         ax.legend(title="Model", loc="upper right")
     else:
-        ax.get_legend().remove()
+        legend = ax.get_legend()
+        if legend is not None:
+            legend.remove()
 
 
 
@@ -1443,7 +1509,7 @@ def plot_bl_vs_popsize_error_by_time_bin(df, sampling, bin_width=50, time_col="h
                                          x_range=None, y_range=None, show_errorbars=True, min_values_per_bin=1):
     df = df[df["sampling"] == sampling].copy()
     mutsig_order = ["low", "med", "high"]
-    growth_model_order = ["uniform", "expgrowthfast", "expgrowthslow", "bottleneck"]
+    growth_model_order = ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
     hue_order = ["constcoal", "skyline"]
     colors = {"constcoal": "#a6444f", "skyline": "#397398"}
 
@@ -1532,7 +1598,8 @@ def plot_bl_vs_popsize_error_timecoloring_dualmodel(df, sampling, bin_width=50, 
                                                     pop_error_col="rel_diff_pop_size", bl_error_col="bl_relative_error",
                                                     x_range=None, y_range=None, show_errorbars=True,
                                                     min_values_per_bin=1, time_limit=None, log_colorbar=True,
-                                                    x_label=None, y_label=None):
+                                                    x_label=None, y_label=None,
+                                                    pop_models=None, mutsigs=None):
     
     """
     Scatter plot of branch length error vs population size error for both constcoal
@@ -1544,12 +1611,17 @@ def plot_bl_vs_popsize_error_timecoloring_dualmodel(df, sampling, bin_width=50, 
     if time_limit:
         df = df[df[time_col] < time_limit]
 
-    mutsig_order = ["low", "med", "high"]
-    growth_model_order = ["uniform", "expgrowthfast", "expgrowthslow", "bottleneck"]
+    mutsig_order = mutsigs if mutsigs is not None else ["low", "med", "high"]
+    growth_model_order = pop_models if pop_models is not None else ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
+    if isinstance(mutsig_order, str): mutsig_order = [mutsig_order]
+    if isinstance(growth_model_order, str): growth_model_order = [growth_model_order]
+
     title_map = {"expgrowthfast": "Exp-growth fast", "expgrowthslow": "Exp-growth slow",
                  "uniform": "Uniform", "bottleneck": "Bottleneck"}
     model_markers = {"constcoal": "o", "skyline": "^"}
     model_cmaps = {"constcoal": plt.cm.Greens, "skyline": plt.cm.Reds}
+
+    single_pop_model = len(growth_model_order) == 1
 
     df["time_bin"] = pd.cut(df[time_col],
                             bins=np.arange(0, df[time_col].max() + bin_width, bin_width),
@@ -1563,12 +1635,18 @@ def plot_bl_vs_popsize_error_timecoloring_dualmodel(df, sampling, bin_width=50, 
            else plt.Normalize(vmin=t_min_pos, vmax=t_max_val)
     bin_to_idx = {b: i for i, b in enumerate(all_bins)}
 
-    fig, axes = plt.subplots(nrows=len(mutsig_order), ncols=len(growth_model_order),
-                             figsize=(5 * len(growth_model_order), 3.5 * len(mutsig_order)))
+    if single_pop_model:
+        nrows, ncols = 1, len(mutsig_order)
+    else:
+        nrows, ncols = len(mutsig_order), len(growth_model_order)
+
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols,
+                             figsize=(5 * ncols, 3.5 * nrows),
+                             squeeze=False)
 
     for i, mutsig in enumerate(mutsig_order):
         for j, growth_model in enumerate(growth_model_order):
-            ax = axes[i, j]
+            ax = axes[0, i] if single_pop_model else axes[i, j]
             df_sub = df[(df["mutation_signal"] == mutsig) & (df["population_model"] == growth_model)]
 
             for model in ["constcoal", "skyline"]:
@@ -1603,8 +1681,12 @@ def plot_bl_vs_popsize_error_timecoloring_dualmodel(df, sampling, bin_width=50, 
             ax.axvline(0, color="gray", linestyle="--", linewidth=1)
             ax.set_xlabel(x_label if x_label else pop_error_col, fontsize=12)
             ax.tick_params(axis="both", labelsize=11)
-            if i == 0: ax.set_title(title_map.get(growth_model, growth_model), fontsize=14)
-            if j == 0: ax.set_ylabel(f"{mutsig} mut. signal\n{y_label if y_label else bl_error_col}", fontsize=12)
+            if single_pop_model:
+                ax.set_title(f"{mutsig} mut. signal", fontsize=13)
+                if i == 0: ax.set_ylabel(y_label if y_label else bl_error_col, fontsize=12)
+            else:
+                if i == 0: ax.set_title(title_map.get(growth_model, growth_model), fontsize=14)
+                if j == 0: ax.set_ylabel(f"{mutsig} mut. signal\n{y_label if y_label else bl_error_col}", fontsize=12)
 
     fig.suptitle(f"Branch Length vs. Population Size Error ({sampling})\nMedian ± 95% CI, colored by time bin", fontsize=14)
     fig.subplots_adjust(right=0.86)
@@ -1695,14 +1777,18 @@ def plot_bl_vs_popsize_error_timecoloring(df, sampling, bin_width=50, time_col="
     plt.show()
 
 
-def plot_height_errors_over_time_bin(ax, df_sub, t_max, bins=10, error_col="height_abs_relative_error", x_col='height_sim', y_range=None, add_legend=True):
+def plot_height_errors_over_time_bin(ax, df_sub, t_max, bins=10, bin_width=None, error_col="height_abs_relative_error", x_col='height_sim', y_range=None, add_legend=True):
     df_sub = df_sub.copy()
 
     # Only consider rows within the [0, t_max] time range
     df_sub = df_sub[(df_sub[x_col] >= 0) & (df_sub[x_col] <= t_max)]
 
-    # Create consistent bin edges
-    bin_edges = np.linspace(0, t_max, bins + 1)
+    # Create bin edges
+    if bin_width is not None:
+        bin_edges = list(range(0, t_max, bin_width))
+        bin_edges.append(max(df_sub[x_col].max() + 1e-6, t_max + 1e-6))
+    else:
+        bin_edges = np.linspace(0, t_max, bins + 1)
     df_sub["time_bin"] = pd.cut(df_sub[x_col], bins=bin_edges, include_lowest=True)
     df_sub = df_sub.dropna(subset=["time_bin", error_col])
 
@@ -1747,30 +1833,50 @@ def plot_combined_population_and_error(df_population, df_error, sampling,
                                        time_horizon=800, pop_y_range=(0, 5000),
                                        error_y_range=(-1, 3), bins=10, bin_width=None,
                                        error_col='bl_relative_error', x_col='height_sim',
-                                       mode='both', plot_type='violin'):
+                                       mode='both', plot_type='violin',
+                                       pop_models=None, mutsigs=None):
     df_population = df_population[df_population["sampling"] == sampling].copy()
     df_error = df_error[df_error["sampling"] == sampling].copy()
 
-    mutsig_order = ["low", "med", "high"]
-    growth_model_order = ["uniform", "expgrowthfast", "expgrowthslow", "bottleneck"]
+    mutsig_order = mutsigs if mutsigs is not None else ["low", "med", "high"]
+    growth_model_order = pop_models if pop_models is not None else ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
+
+    # Ensure lists
+    if isinstance(mutsig_order, str): mutsig_order = [mutsig_order]
+    if isinstance(growth_model_order, str): growth_model_order = [growth_model_order]
+
     ncols = len(growth_model_order)
 
     # 2 data rows per mutsig + 1 spacer between mutsig groups (except after last)
-    row_heights = [1, 1, 0.3] * len(mutsig_order)
-    row_heights = row_heights[:-1]  # drop trailing spacer
-
-    fig = plt.figure(figsize=(5 * ncols, 2.5 * len(row_heights)))
-    gs = gridspec.GridSpec(len(row_heights), ncols, height_ratios=row_heights, hspace=0.6, wspace=0.4)
-
     title_map = {"expgrowthfast": "Exp-growth fast", "expgrowthslow": "Exp-growth slow",
                  "uniform": "Uniform", "bottleneck": "Bottleneck"}
 
+    single_pop_model = len(growth_model_order) == 1
+
+    if single_pop_model:
+        # Layout: cols = mutsigs, rows = [pop, error]
+        ncols = len(mutsig_order)
+        fig, axes = plt.subplots(2, ncols, figsize=(5 * ncols, 5),
+                                 gridspec_kw={"hspace": 0.4, "wspace": 0.4})
+        if ncols == 1:
+            axes = axes.reshape(2, 1)
+    else:
+        # Layout: cols = pop models, rows = mutsig groups (pop + error + spacer)
+        row_heights = [1, 1, 0.3] * len(mutsig_order)
+        row_heights = row_heights[:-1]
+        fig = plt.figure(figsize=(5 * ncols, 2.5 * len(row_heights)))
+        gs = gridspec.GridSpec(len(row_heights), ncols, height_ratios=row_heights, hspace=0.6, wspace=0.4)
+
     for i, mutsig in enumerate(mutsig_order):
-        row_pop = i * 3
-        row_err = i * 3 + 1
         for j, growth_model in enumerate(growth_model_order):
-            ax_pop = fig.add_subplot(gs[row_pop, j])
-            ax_err = fig.add_subplot(gs[row_err, j])
+            if single_pop_model:
+                ax_pop = axes[0, i]
+                ax_err = axes[1, i]
+            else:
+                row_pop = i * 3
+                row_err = i * 3 + 1
+                ax_pop = fig.add_subplot(gs[row_pop, j])
+                ax_err = fig.add_subplot(gs[row_err, j])
 
             subset_pop = df_population[
                 (df_population["mutation_signal"] == mutsig) &
@@ -1790,19 +1896,31 @@ def plot_combined_population_and_error(df_population, df_error, sampling,
                 ax_pop.set_xlim(time_horizon, 0)
 
             if not subset_err.empty:
-                plot_height_errors_by_time_bin(
-                    ax=ax_err, df_sub=subset_err, t_max=time_horizon,
-                    bins=bins, bin_width=bin_width,
-                    error_col=error_col, x_col=x_col, y_range=error_y_range,
-                    plot_type=plot_type, add_legend=False,
-                    skyline_col="#80557e", constcoal_col="#397398")
-                ax_err.invert_xaxis()
+                if plot_type == "scatter":
+                    plot_height_errors_over_time_bin(
+                        ax=ax_err, df_sub=subset_err, t_max=time_horizon,
+                        bins=bins, bin_width=bin_width, error_col=error_col, x_col=x_col,
+                        y_range=error_y_range, add_legend=False)
+                else:
+                    plot_height_errors_by_time_bin(
+                        ax=ax_err, df_sub=subset_err, t_max=time_horizon,
+                        bins=bins, bin_width=bin_width,
+                        error_col=error_col, x_col=x_col, y_range=error_y_range,
+                        plot_type=plot_type, add_legend=False,
+                        skyline_col="#80557e", constcoal_col="#397398")
+                    ax_err.invert_xaxis()
 
-            if j == 0:
-                ax_pop.set_ylabel(f"{mutsig} mut. signal\nPopulation size")
-                ax_err.set_ylabel(error_col)
-            if i == 0:
-                ax_pop.set_title(title_map.get(growth_model, growth_model))
+            if single_pop_model:
+                ax_pop.set_title(f"{mutsig} mut. signal")
+                if i == 0:
+                    ax_pop.set_ylabel("Population size")
+                    ax_err.set_ylabel(error_col)
+            else:
+                if j == 0:
+                    ax_pop.set_ylabel(f"{mutsig} mut. signal\nPopulation size")
+                    ax_err.set_ylabel(error_col)
+                if i == 0:
+                    ax_pop.set_title(title_map.get(growth_model, growth_model))
 
     handles = [Line2D([0], [0], color="#80557e", lw=4, label="Skyline"),
                Line2D([0], [0], color="#397398", lw=4, label="Const. Coalescent")]
