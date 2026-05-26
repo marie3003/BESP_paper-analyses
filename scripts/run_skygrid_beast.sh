@@ -27,18 +27,29 @@ while IFS= read -r xml || [ -n "$xml" ]; do
     logfile="${outdir}/${name}.log"
     treefile="${outdir}/${name}.trees"
 
-    sbatch \
-        --job-name="skygrid_${name}" \
-        --output="${outdir}/${name}.slurm.log" \
-        --error="${outdir}/${name}.slurm.log" \
-        --time=16:00:00 \
-        --mem-per-cpu=1G \
-        --cpus-per-task=2 \
-        --wrap="
-            module load stack/2024-06 openjdk/21.0.3_9 gcc/12.2.0 beast1/1.10.4 libbeagle/3.1.2
-            cd ${outdir}
-            beast -overwrite -seed 45 ${xml_abs} > ${logfile} 2>&1
-        "
+    job_script="${outdir}/${name}.job.sh"
+    cat > "$job_script" << EOF
+#!/bin/bash
+#SBATCH --job-name=skygrid_${name}
+#SBATCH --output=${outdir}/${name}.slurm.log
+#SBATCH --error=${outdir}/${name}.slurm.log
+#SBATCH --time=16:00:00
+#SBATCH --mem-per-cpu=1G
+#SBATCH --cpus-per-task=2
+#SBATCH --partition=normal
 
+module load stack/2024-06
+module load openjdk/21.0.3_9
+module load gcc/12.2.0
+module load beast1/1.10.4
+module load libbeagle/3.1.2
+
+set -euo pipefail
+
+cd ${outdir}
+beast -overwrite -seed 45 ${xml_abs}
+EOF
+
+    sbatch "$job_script"
     echo "Submitted: $name"
 done < "$XML_LIST"
