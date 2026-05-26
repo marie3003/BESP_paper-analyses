@@ -29,7 +29,7 @@ while IFS= read -r xml || [ -n "$xml" ]; do
 
     job_script="${outdir}/${name}.job.sh"
     cat > "$job_script" << EOF
-#!/bin/bash
+#!/usr/bin/env bash
 #SBATCH --job-name=skygrid_${name}
 #SBATCH --output=${outdir}/${name}.slurm.log
 #SBATCH --error=${outdir}/${name}.slurm.log
@@ -38,6 +38,7 @@ while IFS= read -r xml || [ -n "$xml" ]; do
 #SBATCH --cpus-per-task=2
 #SBATCH --partition=normal
 
+source /etc/profile
 module load stack/2024-06
 module load openjdk/21.0.3_9
 module load gcc/12.2.0
@@ -50,6 +51,6 @@ cd ${outdir}
 beast -overwrite -seed 45 ${xml_abs}
 EOF
 
-    sbatch "$job_script"
+    sbatch --export=ALL "$job_script"
     echo "Submitted: $name"
 done < "$XML_LIST"
