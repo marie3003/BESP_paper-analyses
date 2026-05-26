@@ -10,14 +10,12 @@
 	
 
 	<!-- The list of taxa to be analysed (can also include dates/ages).          -->
-	<!-- ntax=200                                                                -->
 	
 	<taxa id="taxa">{$dates}</taxa>
 	
 
 	<!-- The sequence alignment (each sequence refers to a taxon above).         -->
-	<!-- ntax=200 nchar=450                                                      -->
-	
+		
 	<alignment id="alignment" dataType="nucleotide">{$taxa}</alignment>
 	
 	
@@ -125,9 +123,6 @@
 
 	<!-- Define operators                                                        -->
 	<operators id="operators" optimizationSchedule="default">
-		<scaleOperator scaleFactor="0.75" scaleAll="true" ignoreBounds="true" weight="1">
-			<parameter idref="treeModel.allInternalNodeHeights"/>
-		</scaleOperator>
 		<scaleOperator scaleFactor="0.75" weight="1">
 			<parameter idref="treeModel.rootHeight"/>
 		</scaleOperator>

@@ -40,6 +40,7 @@ scripts/xml_list_*.txt
 scripts/.log
 
 results/run1/simulated_data/**/*_snps.fasta
+results/run1/simulated_data_test/
 
 benchmarks/
 results/run1/beast_inference/
