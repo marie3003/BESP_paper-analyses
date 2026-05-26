@@ -30,11 +30,21 @@ get_trajectory <- function(type) {
     bottleneck_end   <- 13
     
   
+    # if (grepl("^bottleneck_d[0-9]+_w[0-9]+$", type)) {
+    #   params <- as.numeric(regmatches(type, gregexpr("[0-9]+", type))[[1]])
+    #   bn_depth <- params[1]
+    #   bn_width <- params[2]
+    #   return(function(t) bottleneck_traj_param(t, min=bn_depth, max=unif_upper, start=bottleneck_start, stop=bottleneck_start+bn_width))
+    # }
+
     switch(type,
           "uniform" = function(t) unif_traj(t, level = unif_upper),
-          "expgrowth_fast"  = function(t) exp_traj_lower_limit(t, scale=exp_scale, rate=exp_rate_fast, lower_limit=exp_lower_limit),
-          "expgrowth_slow"  = function(t) exp_traj_lower_limit(t, scale=exp_scale, rate=exp_rate_slow, lower_limit=exp_lower_limit),
-          "bottleneck" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=bottleneck_start, stop=bottleneck_end)
+          "expgrowthfast"  = function(t) exp_traj_lower_limit(t, scale=exp_scale, rate=exp_rate_fast, lower_limit=exp_lower_limit),
+          "expgrowthslow"  = function(t) exp_traj_lower_limit(t, scale=exp_scale, rate=exp_rate_slow, lower_limit=exp_lower_limit),
+          "bottleneck" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=bottleneck_start, stop=bottleneck_end),
+          "bottleneck20" = function(t) bottleneck_traj_param(t, min=20, max=unif_upper, start=bottleneck_start, stop=bottleneck_end),
+          "bottleneck50" = function(t) bottleneck_traj_param(t, min=50, max=unif_upper, start=bottleneck_start, stop=bottleneck_end),
+          "bottlenecklate" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=50, stop=53),
     )
 }
 

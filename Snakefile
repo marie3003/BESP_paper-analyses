@@ -8,15 +8,21 @@
 # =============================================================================
 
 SAMPLING_TYPES = ["independenthomochronous", "linearconstant"]
-POP_MODELS     = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
-NREPLICATES    = 100
+#POP_MODELS     = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
+POP_MODELS = ["bottleneck20", "bottleneck50", "bottlenecklate"]
+#NREPLICATES    = 100
+NREPLICATES = 10
 INFERENCE      = ["constcoal", "skyline"]
 MUTSIGS        = ["lowmutsig", "medmutsig", "highmutsig"]
 SEEDS          = [44, 45, 46]   # one BEAST run per seed, combined later
 
-SIMDATA    = "results/run1/simulated_data"
-BEAST_DIR  = "results/run1/beast_inference"
-CONFIG_DIR = "results/run1/config"
+#SIMDATA    = "results/run1/simulated_data"
+#BEAST_DIR  = "results/run1/beast_inference"
+#CONFIG_DIR = "results/run1/config"
+
+SIMDATA    = "results/run_bottleneck/simulated_data"
+BEAST_DIR  = "results/run_bottleneck/beast_inference"
+CONFIG_DIR = "results/run_bottleneck/config"
 SEQGEN     = workflow.basedir + "/../Seq-Gen-1.3.5/source/seq-gen"
 
 def config_file(wildcards):
@@ -27,8 +33,8 @@ def get_burnin(wildcards):
     if wildcards.model == "constcoal":
         return 3000000        # 10% of 30M
     if wildcards.sampling == "independenthomochronous":
-        if wildcards.popmodel == "bottleneck":
-            return 30000000   # 10% of 300M (all mutsigs)
+        if wildcards.popmodel in ("bottleneck", "bottleneck20", "bottleneck50", "bottlenecklate"):                                                                                                                                                         
+            return 30000000  # 10% of 300M (all mutsigs)
         elif wildcards.mutsig == "highmutsig":
             return 5000000    # 10% of 50M
         elif wildcards.mutsig == "medmutsig":
@@ -36,7 +42,7 @@ def get_burnin(wildcards):
         else:                 # lowmutsig
             return 30000000   # 10% of 300M
     else:  # linearconstant
-        if wildcards.popmodel == "bottleneck":
+        if wildcards.popmodel in ("bottleneck", "bottleneck20", "bottleneck50", "bottlenecklate"):
             return 20000000   # 10% of 200M
         elif wildcards.mutsig == "lowmutsig":
             return 12000000   # 10% of 120M
@@ -322,7 +328,7 @@ rule build_csv:
         rows = []
         for f in input:
             if os.path.getsize(f) > 0:
-                trees_path = f.replace("_summary.tree", ".combined.trees")
+                trees_path = f.replace(".combined_summary.tree", ".combined.trees")
                 rows.append(f"{trees_path}")
         with open(output.csv, "w") as out:
             out.write("trees_path\n")

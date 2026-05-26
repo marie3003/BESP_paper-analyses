@@ -22,19 +22,32 @@ script_dir <- get_script_dir()
 source(file.path(script_dir, "SimUtils.R"))
 
 # Global settings
-nreplicates <- 100
+nreplicates <- 10
 samp_start  <- 0
 #samp_end    <- 100
 nlimit      <- 10
 nrsamples   <- 250
-outputbase <- file.path(script_dir, "../results/run1/simulated_data/")
+outputbase <- file.path(script_dir, "../results/run_bottleneck/simulated_data/")
 
-trajectories <- data.frame(row.names  =c("expgrowthfast", "expgrowthslow", "uniform", "bottleneck"),
-                           names      =c("Fast exponential growth", "Slow exponential growth","Uniform", "Bottleneck"),
+# usual version
+# trajectories <- data.frame(row.names         =c("expgrowthfast", "expgrowthslow", "uniform", "bottleneck"),
+#                            names             =c("Fast exponential growth", "Slow exponential growth","Uniform", "Bottleneck"),
+#                            # only used for plotting
+#                            maxdensity        = c(0.1, 0.1, 0.05, 0.1),
+#                            maxlineages       = c(300, 300, 100, 100),
+#                            samp_end          = c(100, 100, 100, 30),
+#                            maxtime_homo      = c(NA, NA, 500, 50),   # homochronous: cut to 100 years
+#                            maxtime_hetero    = c(NA, NA, 500, 300))     # heterochronous: NULL=auto for expgrowth, fixed for others
+
+# trying out new bottleneck scenarios
+trajectories <- data.frame(row.names         =c("bottleneck20", "bottleneck50", "bottlenecklate"),
+                           names             =c("Bottleneck (Depth 20)", "Bottleneck (Depth 50)", "Later Bottleneck"),
                            # only used for plotting
-                           maxdensity  = c(0.1, 0.1, 0.05, 0.05),
-                           maxlineages = c(300, 300, 100, 100),
-                           samp_end    = c(100, 100, 100, 30))
+                           maxdensity        = c(0.1, 0.1, 0.1),
+                           maxlineages       = c(100, 100, 100),
+                           samp_end          = c(30, 30, 30),
+                           maxtime_homo      = c(50, 50, 100),   # homochronous: cut to 100 years
+                           maxtime_hetero    = c(300, 300, 300))     # heterochronous: NULL=auto for expgrowth, fixed for others
 
 
 # --- Plotting helper functions ------------------------------------------------
@@ -67,9 +80,9 @@ plotPointProcess <- function(sim, par, col=pal.dark(cblue)) {
   points(sim[[par]], rep(1, length(sim[[par]])), pch=20, col=col)
 }
 
-summariseSims <- function(sims, maxdensity=0.05, maxlineages=100) {
+summariseSims <- function(sims, maxdensity=0.05, maxlineages=100, maxtime=NULL) {
 
-  maxtime <- max(sims[[1]]$coal_times)
+  if (is.null(maxtime) || is.na(maxtime)) maxtime <- max(sims[[1]]$coal_times)
 
   layout(matrix(c(1,2,3,4,5,4,6,4), byrow=TRUE, ncol=2), heights=c(0.5,0.5,0.2,0.2))
   par(mar=c(5,4,2,3)+0.1)
@@ -134,10 +147,10 @@ for (i in 1:nrow(trajectories)) {
 
   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
   sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_start, nlimit=nlimit)
-  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=FALSE)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=FALSE, newick=TRUE, json=FALSE)
 
   pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
-  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i], maxtime=trajectories$maxtime_homo[i])
   title(main=trajectories$names[i],
         sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ",nrsamples, ", Sampling period: [",samp_start,",",samp_start,"]"),
         outer=TRUE, line=-1.0)
@@ -164,7 +177,7 @@ for (i in 1:nrow(trajectories)) {
 #   dev.off()
 # }
 
-# simulate trees with preferential heterogeneous sampling, 1 epoch
+#simulate trees with preferential heterogeneous sampling, 1 epoch
 set.seed(9)
 outputpath <- file.path(outputbase, "linearconstant")
 for (i in 1:nrow(trajectories)) {
@@ -174,15 +187,61 @@ for (i in 1:nrow(trajectories)) {
 
   traj <- lapply(rep(trajname, nreplicates), get_trajectory)
   sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=trajectories$samp_end[i], nlimit=nlimit)
-  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=FALSE, csv=FALSE, newick=TRUE, json=FALSE)
+  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=FALSE, newick=TRUE, json=FALSE)
 
   pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
-  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i])
+  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i], maxtime=trajectories$maxtime_hetero[i])
   title(main=trajectories$names[i],
         sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ~",nrsamples, ", Sampling period: [",samp_start,",",trajectories$samp_end[i],"]"),
         outer=TRUE, line=-1.0)
   dev.off()
 }
+
+# simulate trees with bottleneck trajectories (varying depth and width)
+bottleneck_depths <- c(10, 20, 30, 40, 50)
+bottleneck_widths <- c(3, 5, 10, 20)
+# bottleneck starts at t=10, max Ne=1000, samp_end=max(stop)+10 to capture recovery
+bn_samp_end    <- 50
+bn_maxtime_homo <- 50
+bn_maxtime_hetero <- 300
+
+# set.seed(9)
+# outputpath <- file.path(outputbase, "bottleneck_homochronous")
+# for (depth in bottleneck_depths) {
+#   for (width in bottleneck_widths) {
+#     trajname <- paste0("bottleneck_d", depth, "_w", width)
+#     cat(paste0("## Bottleneck depth=", depth, " width=", width, "\n"))
+#     traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+#     sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_start, nlimit=nlimit)
+#     sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=FALSE, newick=TRUE, json=FALSE)
+
+#     pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
+#     summariseSims(sims, maxdensity=0.1, maxlineages=100, maxtime=bn_maxtime_homo)
+#     title(main=paste0("Bottleneck depth=", depth, " width=", width),
+#           sub=paste0("Nr. replicates: ", nreplicates, ", Nr. samples: ", nrsamples, ", Sampling period: [", samp_start, ",", samp_start, "]"),
+#           outer=TRUE, line=-1.0)
+#     dev.off()
+#   }
+# }
+
+# set.seed(9)
+# outputpath <- file.path(outputbase, "bottleneck_heterochronous")
+# for (depth in bottleneck_depths) {
+#   for (width in bottleneck_widths) {
+#     trajname <- paste0("bottleneck_d", depth, "_w", width)
+#     cat(paste0("## Bottleneck depth=", depth, " width=", width, "\n"))
+#     traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+#     sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=bn_samp_end, nlimit=nlimit)
+#     sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=FALSE, newick=TRUE, json=FALSE)
+
+#     pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
+#     summariseSims(sims, maxdensity=0.1, maxlineages=100, maxtime=bn_maxtime_hetero)
+#     title(main=paste0("Bottleneck depth=", depth, " width=", width),
+#           sub=paste0("Nr. replicates: ", nreplicates, ", Nr. samples: ~", nrsamples, ", Sampling period: [", samp_start, ",", bn_samp_end, "]"),
+#           outer=TRUE, line=-1.0)
+#     dev.off()
+#   }
+# }
 
 # simulate trees with preferential heterogeneous sampling, 24 epochs
 # set.seed(9)
