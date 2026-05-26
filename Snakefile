@@ -55,7 +55,7 @@ def get_burnin(wildcards):
 # =============================================================================
 rule all:
     input:
-        "scripts/successful_mcmc_runs.csv"
+        f"{BEAST_DIR}/successful_mcmc_runs.csv"
 
 
 rule all_alignments:
@@ -322,7 +322,7 @@ rule build_csv:
             model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, i=range(NREPLICATES)
         )
     output:
-        csv = "scripts/successful_mcmc_runs.csv",
+        csv = f"{BEAST_DIR}/successful_mcmc_runs.csv",
     run:
         import os
         rows = []
