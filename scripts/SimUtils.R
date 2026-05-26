@@ -45,6 +45,7 @@ get_trajectory <- function(type) {
           "bottleneck20" = function(t) bottleneck_traj_param(t, min=20, max=unif_upper, start=bottleneck_start, stop=bottleneck_end),
           "bottleneck50" = function(t) bottleneck_traj_param(t, min=50, max=unif_upper, start=bottleneck_start, stop=bottleneck_end),
           "bottlenecklate" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=50, stop=53),
+          "bottlenecklatesampling" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=50, stop=53),
     )
 }
 
