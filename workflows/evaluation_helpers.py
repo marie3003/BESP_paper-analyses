@@ -338,19 +338,41 @@ def compare_tree_metrics(tree_sim, tree_estimate):
         (branch_length_df["height_sim"] <= branch_length_df["height_ci_upper_estimate"])
     ).where(branch_length_df["height_ci_lower_estimate"].notna())
 
+    def _abs_ci(signed_lower, signed_upper):
+        crosses_zero = (signed_lower <= 0) & (signed_upper >= 0)
+        abs_lower = np.where(crosses_zero, 0.0, np.minimum(np.abs(signed_lower), np.abs(signed_upper)))
+        abs_upper = np.maximum(np.abs(signed_lower), np.abs(signed_upper))
+        return abs_lower, abs_upper
+
     # Errors for branch lengths
-    branch_length_df["bl_diff"] = branch_length_df["bl_estimate"] - branch_length_df["bl_sim"]
-    branch_length_df["bl_relative_error"] = branch_length_df["bl_diff"] / branch_length_df["bl_sim"]
+    bl_sim = branch_length_df["bl_sim"]
+    branch_length_df["bl_diff"]                = branch_length_df["bl_estimate"] - bl_sim
+    branch_length_df["bl_diff_lower"]          = branch_length_df["bl_ci_lower_estimate"] - bl_sim
+    branch_length_df["bl_diff_upper"]          = branch_length_df["bl_ci_upper_estimate"] - bl_sim
+    branch_length_df["bl_relative_error"]       = branch_length_df["bl_diff"] / bl_sim
+    branch_length_df["bl_relative_error_lower"] = branch_length_df["bl_diff_lower"] / bl_sim
+    branch_length_df["bl_relative_error_upper"] = branch_length_df["bl_diff_upper"] / bl_sim
     branch_length_df["bl_abs_relative_error"] = np.abs(branch_length_df["bl_relative_error"])
+    bl_abs_lo, bl_abs_up = _abs_ci(branch_length_df["bl_relative_error_lower"],
+                                    branch_length_df["bl_relative_error_upper"])
+    branch_length_df["bl_abs_relative_error_lower"] = bl_abs_lo
+    branch_length_df["bl_abs_relative_error_upper"] = bl_abs_up
 
     # Errors for node heights
-    branch_length_df["height_diff"] = branch_length_df["height_estimate"] - branch_length_df["height_sim"]
-    branch_length_df["height_relative_error"] = np.where(
-        branch_length_df["internal"],
-        branch_length_df["height_diff"] / branch_length_df["height_sim"],
-        0.0
-    )
+    height_sim = branch_length_df["height_sim"]
+    internal   = branch_length_df["internal"]
+    branch_length_df["height_diff"]                = branch_length_df["height_estimate"] - height_sim
+    branch_length_df["height_diff_lower"]          = branch_length_df["height_ci_lower_estimate"] - height_sim
+    branch_length_df["height_diff_upper"]          = branch_length_df["height_ci_upper_estimate"] - height_sim
+    safe_h = height_sim.replace(0, np.nan)
+    branch_length_df["height_relative_error"]       = np.where(internal, branch_length_df["height_diff"] / safe_h, 0.0)
+    branch_length_df["height_relative_error_lower"] = np.where(internal, branch_length_df["height_diff_lower"] / safe_h, 0.0)
+    branch_length_df["height_relative_error_upper"] = np.where(internal, branch_length_df["height_diff_upper"] / safe_h, 0.0)
     branch_length_df["height_abs_relative_error"] = np.abs(branch_length_df["height_relative_error"])
+    h_abs_lo, h_abs_up = _abs_ci(branch_length_df["height_relative_error_lower"],
+                                   branch_length_df["height_relative_error_upper"])
+    branch_length_df["height_abs_relative_error_lower"] = np.where(internal, h_abs_lo, np.nan)
+    branch_length_df["height_abs_relative_error_upper"] = np.where(internal, h_abs_up, np.nan)
 
     return branch_length_df
 
@@ -470,9 +492,8 @@ def compute_cumulative_population(time_points, populations):
     # Compute population contribution in each interval
     contributions = widths * populations
 
-    # Cumulative sum
-    cumulative = np.cumsum(contributions)
-    cumulative = np.concatenate(([0], time_points))
+    # Cumulative sum, prepend 0 for the start
+    cumulative = np.concatenate(([0], np.cumsum(contributions)))
     return cumulative
 
 def cumulative_exp_pop_size(t, present_pop_size, growth_rate):
@@ -486,6 +507,14 @@ def extract_tree_info(row, num_groups=10, burnin=0):
     # Load tree
     tree = Phylo.read(row["tree_path_skyline"], "nexus")
 
+    # Load simulated tree and compute branch length statistics
+    sim_trees = list(Phylo.parse(row["sim_tree_path"], "newick"))
+    tree_sim = sim_trees[row["tree_index"]]
+    tip_names = {c.name for c in tree_sim.get_terminals()}
+    total_bl_sim = sum(c.branch_length for c in tree_sim.find_clades() if c.branch_length is not None)
+    tip_bl_sim = sum(c.branch_length for c in tree_sim.find_clades()
+                     if c.branch_length is not None and c.name in tip_names)
+
     # Extract population size estimates
     skyline_times = get_skyline_group_boundaries(tree, num_groups=num_groups)
     root_height = skyline_times[-1]
@@ -493,11 +522,15 @@ def extract_tree_info(row, num_groups=10, burnin=0):
     coalescent_median, coalescent_lower, coalescent_upper, coalescent_samples = get_median_population_size(row["log_path_constcoal"], burnin=burnin, mode="constcoal")
 
     skyline_cumulative_medians = compute_cumulative_population(skyline_times, skyline_medians)
+    skyline_cumulative_lowers  = compute_cumulative_population(skyline_times, skyline_lowers)
+    skyline_cumulative_uppers  = compute_cumulative_population(skyline_times, skyline_uppers)
 
     return pd.Series({
             "skyline_medians": skyline_medians,
             "skyline_times": skyline_times,
             "skyline_cumulative_medians": skyline_cumulative_medians,
+            "skyline_cumulative_lowers": skyline_cumulative_lowers,
+            "skyline_cumulative_uppers": skyline_cumulative_uppers,
             "coalescent_median": coalescent_median,
             "root_height": root_height,
             "skyline_lowers": skyline_lowers,
@@ -505,48 +538,74 @@ def extract_tree_info(row, num_groups=10, burnin=0):
             "coalescent_lower": coalescent_lower,
             "coalescent_upper": coalescent_upper,
             "skyline_samples": skyline_samples_df,
-            "coalescent_samples": coalescent_samples})
+            "coalescent_samples": coalescent_samples,
+            "total_branch_length_sim": total_bl_sim,
+            "tip_branch_length_sim": tip_bl_sim})
 
 
 def add_tree_information(df, num_groups = 10, burnin = 0):
     estimates = df.apply(lambda row: extract_tree_info(row, num_groups=num_groups, burnin=burnin), axis=1)
     return pd.concat([df, estimates], axis=1)
 
+def _abs_error_ci(signed_lower, signed_upper):
+    """Compute CI bounds for absolute error given signed lower/upper bounds."""
+    crosses_zero = signed_lower <= 0 <= signed_upper
+    abs_lower = 0.0 if crosses_zero else min(abs(signed_lower), abs(signed_upper))
+    abs_upper = max(abs(signed_lower), abs(signed_upper))
+    return abs_lower, abs_upper
+
+
 def calculate_population_size_error(
     t,
     true_traj,
     skyline_times=None,
     skyline_medians=None,
-    coalescent_median=None
+    skyline_lowers=None,
+    skyline_uppers=None,
+    coalescent_median=None,
+    coalescent_lower=None,
+    coalescent_upper=None,
 ):
-    # 1. True population size at time t
     true_pop_size = true_traj(t)
 
-    # 2. Estimated population size
     if coalescent_median is not None:
         est_pop_size = coalescent_median
-
+        est_lower = coalescent_lower
+        est_upper = coalescent_upper
     elif skyline_times is not None and skyline_medians is not None:
-
-        # Use np.searchsorted to find the correct interval index
-        interval_index = np.searchsorted(skyline_times, t, side="left") - 1
-        est_pop_size = skyline_medians[interval_index]
-
+        idx = max(np.searchsorted(skyline_times, t, side="left") - 1, 0)
+        est_pop_size = skyline_medians[idx]
+        est_lower = skyline_lowers[idx] if skyline_lowers is not None else None
+        est_upper = skyline_uppers[idx] if skyline_uppers is not None else None
     else:
-        raise ValueError("Either coalescent_median or skyline_times + skyline_median must be provided.")
+        raise ValueError("Either coalescent_median or skyline_times + skyline_medians must be provided.")
 
-    # 3. Compute errors
-    error = (est_pop_size - true_pop_size)
-    relative_error = error / true_pop_size
-    abs_relative_error = abs(relative_error)
+    error = est_pop_size - true_pop_size
+    rel_error = error / true_pop_size
+
+    diff_lower = (est_lower - true_pop_size) if est_lower is not None else np.nan
+    diff_upper = (est_upper - true_pop_size) if est_upper is not None else np.nan
+    rel_lower  = diff_lower / true_pop_size if est_lower is not None else np.nan
+    rel_upper  = diff_upper / true_pop_size if est_upper is not None else np.nan
+
+    abs_diff_lo, abs_diff_up = _abs_error_ci(diff_lower, diff_upper) if est_lower is not None else (np.nan, np.nan)
+    abs_rel_lo,  abs_rel_up  = _abs_error_ci(rel_lower,  rel_upper)  if est_lower is not None else (np.nan, np.nan)
 
     return {
         "true_pop_size": true_pop_size,
         "est_pop_size": est_pop_size,
         "diff_pop_size": error,
-        "abs_diff_pop_size": np.abs(error),
-        "rel_diff_pop_size": relative_error,
-        "abs_rel_diff_pop_size": abs_relative_error
+        "diff_pop_size_lower": diff_lower,
+        "diff_pop_size_upper": diff_upper,
+        "abs_diff_pop_size": abs(error),
+        "abs_diff_pop_size_lower": abs_diff_lo,
+        "abs_diff_pop_size_upper": abs_diff_up,
+        "rel_diff_pop_size": rel_error,
+        "rel_diff_pop_size_lower": rel_lower,
+        "rel_diff_pop_size_upper": rel_upper,
+        "abs_rel_diff_pop_size": abs(rel_error),
+        "abs_rel_diff_pop_size_lower": abs_rel_lo,
+        "abs_rel_diff_pop_size_upper": abs_rel_up,
     }
 
 def cumulative_true_pop_size(t, pop_model, row):
@@ -572,24 +631,41 @@ def cumulative_true_pop_size(t, pop_model, row):
 
 
 def calculate_population_size_cumulative_error(t,
-                                               skyline_times=None, skyline_cumulative_medians=None, skyline_medians=None,
-                                               coalescent_median=None, pop_model=None, row=None):
+                                               skyline_times=None,
+                                               skyline_cumulative_medians=None, skyline_medians=None,
+                                               skyline_cumulative_lowers=None, skyline_lowers=None,
+                                               skyline_cumulative_uppers=None, skyline_uppers=None,
+                                               coalescent_median=None, coalescent_lower=None, coalescent_upper=None,
+                                               pop_model=None, row=None):
     cum_pop_size_sim = cumulative_true_pop_size(t, pop_model, row)
 
-    if coalescent_median is not None:
-        cum_pop_size_est = coalescent_median * t
-    
-    elif skyline_times is not None and skyline_cumulative_medians is not None and skyline_medians is not None:
-        interval_index = np.searchsorted(skyline_times, t, side="left") - 1
-        skyline_start_times = [0] + skyline_times
-        cum_pop_size_est = skyline_cumulative_medians[interval_index] + skyline_medians[interval_index] * (t - skyline_start_times[interval_index])
+    def _cum_est(cum_medians, medians):
+        idx = np.searchsorted(skyline_times, t, side="left") - 1
+        start_times = [0] + list(skyline_times)
+        return cum_medians[idx] + medians[idx] * (t - start_times[idx])
 
-    cumulative_pop_size_error = cum_pop_size_est - cum_pop_size_sim
+    if coalescent_median is not None:
+        cum_est     = coalescent_median * t
+        cum_est_lo  = coalescent_lower * t if coalescent_lower is not None else np.nan
+        cum_est_up  = coalescent_upper * t if coalescent_upper is not None else np.nan
+    elif skyline_times is not None and skyline_cumulative_medians is not None:
+        cum_est    = _cum_est(skyline_cumulative_medians, skyline_medians)
+        cum_est_lo = _cum_est(skyline_cumulative_lowers, skyline_lowers) if skyline_cumulative_lowers is not None else np.nan
+        cum_est_up = _cum_est(skyline_cumulative_uppers, skyline_uppers) if skyline_cumulative_uppers is not None else np.nan
+
+    error    = cum_est    - cum_pop_size_sim
+    error_lo = cum_est_lo - cum_pop_size_sim
+    error_up = cum_est_up - cum_pop_size_sim
+    abs_lo, abs_up = _abs_error_ci(error_lo, error_up) if not np.isnan(error_lo) else (np.nan, np.nan)
 
     return {
-        "cum_pop_size_sim": cum_pop_size_sim,
-        "cum_pop_size_est": cum_pop_size_est,
-        "cum_pop_size_error": cumulative_pop_size_error,
+        "cum_pop_size_sim":          cum_pop_size_sim,
+        "cum_pop_size_est":          cum_est,
+        "cum_pop_size_error":        error,
+        "cum_pop_size_error_lower":  error_lo,
+        "cum_pop_size_error_upper":  error_up,
+        "cum_pop_size_abs_error_lower": abs_lo,
+        "cum_pop_size_abs_error_upper": abs_up,
     }
 
 def add_population_size_errors(node_df, tree_df):
@@ -614,16 +690,26 @@ def add_population_size_errors(node_df, tree_df):
             t=row["height_sim"],
             true_traj=true_traj,
             coalescent_median=row["coalescent_median"] if is_const else None,
+            coalescent_lower=row["coalescent_lower"] if is_const else None,
+            coalescent_upper=row["coalescent_upper"] if is_const else None,
             skyline_times=row["skyline_times"] if is_skyline else None,
-            skyline_medians=row["skyline_medians"] if is_skyline else None
+            skyline_medians=row["skyline_medians"] if is_skyline else None,
+            skyline_lowers=row["skyline_lowers"] if is_skyline else None,
+            skyline_uppers=row["skyline_uppers"] if is_skyline else None,
         )
 
         cumulative = calculate_population_size_cumulative_error(
             t=row["height_sim"],
             coalescent_median=row["coalescent_median"] if is_const else None,
+            coalescent_lower=row["coalescent_lower"] if is_const else None,
+            coalescent_upper=row["coalescent_upper"] if is_const else None,
             skyline_times=row["skyline_times"] if is_skyline else None,
             skyline_cumulative_medians=row["skyline_cumulative_medians"] if is_skyline else None,
+            skyline_cumulative_lowers=row["skyline_cumulative_lowers"] if is_skyline else None,
+            skyline_cumulative_uppers=row["skyline_cumulative_uppers"] if is_skyline else None,
             skyline_medians=row["skyline_medians"] if is_skyline else None,
+            skyline_lowers=row["skyline_lowers"] if is_skyline else None,
+            skyline_uppers=row["skyline_uppers"] if is_skyline else None,
             pop_model=row["population_model"],
             row=row
         )
@@ -637,6 +723,7 @@ def add_population_size_errors(node_df, tree_df):
     result['cum_pop_size_error_relsim'] = result['cum_pop_size_error'] / result['cum_pop_size_sim']
 
     list_cols = ['skyline_times', 'skyline_medians', 'skyline_cumulative_medians',
+                 'skyline_cumulative_lowers', 'skyline_cumulative_uppers',
                  'skyline_lowers', 'skyline_uppers', 'skyline_samples', 'coalescent_samples',
                  'tree_path_constcoal', 'log_path_constcoal', 'tree_path_skyline',
                  'log_path_skyline', 'sim_tree_path']
@@ -1704,6 +1791,219 @@ def plot_bl_vs_popsize_error_timecoloring_dualmodel(df, sampling, bin_width=50, 
 
 
 
+def plot_hpd_width_vs_bl(df, sampling, tree_index,
+                          pop_models=None, mutsigs=None,
+                          x_range=None, y_range=None,
+                          alpha=0.5, s=15, title=None):
+    """
+    Scatterplot of 95% HPD width (bl_ci_upper_estimate - bl_ci_lower_estimate)
+    vs median estimated branch length (bl_estimate), for one specific tree.
+    Columns = population models, rows = mutation signals.
+    Constcoal = red, skyline = blue.
+    """
+    df = df[(df["sampling"] == sampling) & (df["tree_index"] == tree_index)].copy()
+    df = df.dropna(subset=["bl_estimate", "bl_ci_lower_estimate", "bl_ci_upper_estimate"])
+    df["hpd_width"] = df["bl_ci_upper_estimate"] - df["bl_ci_lower_estimate"]
+
+    mutsig_order = mutsigs if mutsigs is not None else ["low", "med", "high"]
+    growth_model_order = pop_models if pop_models is not None else ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
+    if isinstance(mutsig_order, str): mutsig_order = [mutsig_order]
+    if isinstance(growth_model_order, str): growth_model_order = [growth_model_order]
+
+    title_map = {"expgrowthfast": "Exp-growth fast", "expgrowthslow": "Exp-growth slow",
+                 "uniform": "Uniform", "bottleneck": "Bottleneck"}
+    model_colors = {"constcoal": "#a6444f", "skyline": "#397398"}
+
+    fig, axes = plt.subplots(len(mutsig_order), len(growth_model_order),
+                             figsize=(4 * len(growth_model_order), 3.5 * len(mutsig_order)),
+                             squeeze=False)
+
+    for i, mutsig in enumerate(mutsig_order):
+        for j, growth_model in enumerate(growth_model_order):
+            ax = axes[i, j]
+            df_sub = df[(df["mutation_signal"] == mutsig) & (df["population_model"] == growth_model)]
+
+            for model, color in model_colors.items():
+                df_m = df_sub[df_sub["model"] == model]
+                if df_m.empty:
+                    continue
+                ax.scatter(df_m["bl_estimate"], df_m["hpd_width"],
+                           color=color, s=s, alpha=alpha, label=model)
+
+            if x_range: ax.set_xlim(x_range)
+            if y_range: ax.set_ylim(y_range)
+            ax.set_xlabel("Estimated branch length", fontsize=9)
+            ax.tick_params(labelsize=8)
+            if i == 0: ax.set_title(title_map.get(growth_model, growth_model), fontsize=11)
+            if j == 0: ax.set_ylabel(f"{mutsig} mut. signal\nHPD width", fontsize=9)
+
+    handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=c,
+                           markersize=7, label=m) for m, c in model_colors.items()]
+    fig.legend(handles=handles, loc='upper right', bbox_to_anchor=(0.98, 1.02), ncol=2)
+    plt.suptitle(title or f"Tree {tree_index} — HPD width vs bl_estimate ({sampling})", fontsize=13)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    plt.show()
+
+
+def plot_bl_error_vs_bl_sim(df, sampling, tree_index,
+                             y_col="bl_relative_error",
+                             pop_models=None, mutsigs=None,
+                             x_range=None, y_range=None,
+                             alpha=0.5, s=15, title=None):
+    """
+    Scatterplot of branch length error (y_col) vs simulated branch length (bl_sim)
+    for one specific tree_index and sampling type.
+    Columns = population models, rows = mutation signals.
+    Constcoal = red, skyline = blue.
+    Error bars from {y_col}_lower / {y_col}_upper if available.
+    """
+    df = df[(df["sampling"] == sampling) & (df["tree_index"] == tree_index)].copy()
+    df = df.dropna(subset=["bl_sim", y_col])
+
+    mutsig_order = mutsigs if mutsigs is not None else ["low", "med", "high"]
+    growth_model_order = pop_models if pop_models is not None else ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
+    if isinstance(mutsig_order, str): mutsig_order = [mutsig_order]
+    if isinstance(growth_model_order, str): growth_model_order = [growth_model_order]
+
+    title_map = {"expgrowthfast": "Exp-growth fast", "expgrowthslow": "Exp-growth slow",
+                 "uniform": "Uniform", "bottleneck": "Bottleneck"}
+    model_colors = {"constcoal": "#a6444f", "skyline": "#397398"}
+
+    y_lower_col = f"{y_col}_lower" if f"{y_col}_lower" in df.columns else None
+    y_upper_col = f"{y_col}_upper" if f"{y_col}_upper" in df.columns else None
+    has_errorbars = y_lower_col is not None
+
+    fig, axes = plt.subplots(len(mutsig_order), len(growth_model_order),
+                             figsize=(4 * len(growth_model_order), 3.5 * len(mutsig_order)),
+                             squeeze=False)
+
+    for i, mutsig in enumerate(mutsig_order):
+        for j, growth_model in enumerate(growth_model_order):
+            ax = axes[i, j]
+            df_sub = df[(df["mutation_signal"] == mutsig) & (df["population_model"] == growth_model)]
+
+            for model, color in model_colors.items():
+                df_m = df_sub[df_sub["model"] == model]
+                if df_m.empty:
+                    continue
+                if has_errorbars:
+                    yerr = [df_m[y_col] - df_m[y_lower_col],
+                            df_m[y_upper_col] - df_m[y_col]]
+                    ax.errorbar(df_m["bl_sim"], df_m[y_col],
+                                yerr=yerr, fmt='o', color=color,
+                                ecolor='lightgray', elinewidth=0.6,
+                                alpha=alpha, capsize=2, markersize=3, label=model)
+                else:
+                    ax.scatter(df_m["bl_sim"], df_m[y_col],
+                               color=color, s=s, alpha=alpha, label=model)
+
+            ax.axhline(0, color="gray", linestyle="--", linewidth=0.8)
+            if x_range: ax.set_xlim(x_range)
+            if y_range: ax.set_ylim(y_range)
+            ax.set_xlabel("Simulated branch length", fontsize=9)
+            ax.tick_params(labelsize=8)
+            if i == 0: ax.set_title(title_map.get(growth_model, growth_model), fontsize=11)
+            if j == 0: ax.set_ylabel(f"{mutsig} mut. signal\n{y_col}", fontsize=9)
+
+    handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=c,
+                           markersize=7, label=m) for m, c in model_colors.items()]
+    fig.legend(handles=handles, loc='upper right', bbox_to_anchor=(0.98, 1.02), ncol=2)
+    plt.suptitle(title or f"Tree {tree_index} — {y_col} vs bl_sim ({sampling})", fontsize=13)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    plt.show()
+
+
+def plot_single_tree_errors(df, sampling, tree_index,
+                            x_col="diff_pop_size", y_col="bl_relative_error",
+                            pop_models=None, mutsigs=None,
+                            x_range=None, y_range=None,
+                            time_col="height_sim", log_colorbar=True,
+                            title=None):
+    """
+    Scatter plot of y_col vs x_col for a single tree_index, one point per node.
+    Color = node height (time before present), colormapped via viridis.
+    Error bars inferred from {col}_lower and {col}_upper columns if present.
+    One subplot per population model × mutation signal.
+    Separate panels per model (constcoal / skyline).
+    """
+    df = df[(df["sampling"] == sampling) & (df["tree_index"] == tree_index)].copy()
+
+    mutsig_order = mutsigs if mutsigs is not None else ["low", "med", "high"]
+    growth_model_order = pop_models if pop_models is not None else ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
+    if isinstance(mutsig_order, str): mutsig_order = [mutsig_order]
+    if isinstance(growth_model_order, str): growth_model_order = [growth_model_order]
+
+    title_map = {"expgrowthfast": "Exp-growth fast", "expgrowthslow": "Exp-growth slow",
+                 "uniform": "Uniform", "bottleneck": "Bottleneck"}
+    model_markers = {"constcoal": "o", "skyline": "^"}
+    model_cmaps   = {"constcoal": plt.cm.Greens, "skyline": plt.cm.Reds}
+
+    t_vals = df[time_col].dropna()
+    t_min_pos = max(t_vals.min(), 1)
+    t_max_val = t_vals.max()
+    norm = plt.matplotlib.colors.LogNorm(vmin=t_min_pos, vmax=t_max_val) if log_colorbar \
+           else plt.Normalize(vmin=t_min_pos, vmax=t_max_val)
+
+    # Check if lower/upper columns exist
+    x_lower_col = f"{x_col}_lower" if f"{x_col}_lower" in df.columns else None
+    x_upper_col = f"{x_col}_upper" if f"{x_col}_upper" in df.columns else None
+    y_lower_col = f"{y_col}_lower" if f"{y_col}_lower" in df.columns else None
+    y_upper_col = f"{y_col}_upper" if f"{y_col}_upper" in df.columns else None
+    has_errorbars = any([x_lower_col, y_lower_col])
+
+    nrows, ncols = len(mutsig_order), len(growth_model_order)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.5 * nrows), squeeze=False)
+
+    for i, mutsig in enumerate(mutsig_order):
+        for j, growth_model in enumerate(growth_model_order):
+            ax = axes[i, j]
+            df_sub = df[(df["mutation_signal"] == mutsig) & (df["population_model"] == growth_model)]
+
+            for model in ["constcoal", "skyline"]:
+                df_m = df_sub[df_sub["model"] == model].dropna(subset=[x_col, y_col, time_col])
+                if df_m.empty:
+                    continue
+                cmap_m = model_cmaps[model]
+
+                if has_errorbars:
+                    for _, row in df_m.iterrows():
+                        color = cmap_m(norm(max(row[time_col], t_min_pos)))
+                        xerr = [[row[x_col] - row[x_lower_col]], [row[x_upper_col] - row[x_col]]] \
+                               if x_lower_col else None
+                        yerr = [[row[y_col] - row[y_lower_col]], [row[y_upper_col] - row[y_col]]] \
+                               if y_lower_col else None
+                        ax.errorbar(row[x_col], row[y_col],
+                                    xerr=xerr, yerr=yerr,
+                                    fmt=model_markers[model], color=color,
+                                    ecolor='lightgray', elinewidth=0.8,
+                                    alpha=0.7, capsize=2, markersize=4)
+                else:
+                    colors = [cmap_m(norm(max(t, t_min_pos))) for t in df_m[time_col]]
+                    ax.scatter(df_m[x_col], df_m[y_col],
+                               c=colors, marker=model_markers[model], s=20, alpha=0.7)
+
+            ax.axhline(0, color="gray", linestyle="--", linewidth=0.8)
+            ax.axvline(0, color="gray", linestyle="--", linewidth=0.8)
+            if x_range: ax.set_xlim(x_range)
+            if y_range: ax.set_ylim(y_range)
+            ax.set_xlabel(x_col, fontsize=10)
+            ax.tick_params(labelsize=9)
+            if i == 0: ax.set_title(title_map.get(growth_model, growth_model), fontsize=11)
+            if j == 0: ax.set_ylabel(f"{mutsig} mut. signal\n{y_col}", fontsize=10)
+
+    fig.subplots_adjust(right=0.86)
+    cbar_const = fig.colorbar(plt.cm.ScalarMappable(cmap=model_cmaps["constcoal"], norm=norm),
+                               cax=fig.add_axes([0.88, 0.15, 0.015, 0.7]))
+    cbar_const.set_label("Time before present — constcoal", rotation=270, labelpad=15, fontsize=10)
+
+    cbar_sky = fig.colorbar(plt.cm.ScalarMappable(cmap=model_cmaps["skyline"], norm=norm),
+                             cax=fig.add_axes([0.95, 0.15, 0.015, 0.7]))
+    cbar_sky.set_label("Time before present — skyline", rotation=270, labelpad=15, fontsize=10)
+
+    plt.suptitle(title or f"Tree {tree_index} — {x_col} vs {y_col} ({sampling})", fontsize=13)
+    plt.show()
+
+
 def plot_bl_vs_popsize_error_timecoloring(df, sampling, bin_width=50, time_col="height_sim",
                                          pop_error_col="rel_diff_pop_size", bl_error_col="bl_relative_error",
                                          x_range=None, y_range=None, show_errorbars=True,
@@ -1973,12 +2273,117 @@ def compute_pairwise_snp_distances(repo_base=None):
     return pd.DataFrame(rows)
 
 
+def compute_simulated_tree_lengths(repo_base=None):
+    """
+    For each simulated tree in results/run1/simulated_data/{sampling}/{pop_model}/{pop_model}.trees,
+    compute total branch length and tip branch length.
+
+    Returns a DataFrame with columns:
+    sampling, population_model, tree_index, total_branch_length_sim, tip_branch_length_sim
+    """
+    if repo_base is None:
+        repo_base = Path("/Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses")
+
+    samplings = ["independenthomochronous", "linearconstant"]
+    pop_models = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
+
+    rows = []
+    for sampling in samplings:
+        for pop_model in pop_models:
+            trees_file = repo_base / "results/run1/simulated_data" / sampling / pop_model / f"{pop_model}.trees"
+            if not trees_file.exists():
+                continue
+            for tree_index, tree in enumerate(Phylo.parse(str(trees_file), "newick")):
+                tip_names = {c.name for c in tree.get_terminals()}
+                total_bl = sum(c.branch_length for c in tree.find_clades()
+                               if c.branch_length is not None)
+                tip_bl = sum(c.branch_length for c in tree.find_clades()
+                             if c.branch_length is not None and c.name in tip_names)
+
+                # For each internal node: sum of its two direct child branch lengths
+                child_pair_bls = []
+                for clade in tree.find_clades(order="preorder"):
+                    if clade.clades:  # internal node
+                        child_sum = sum(c.branch_length for c in clade.clades
+                                        if c.branch_length is not None)
+                        child_pair_bls.append(child_sum)
+                mean_child_pair_bl = np.mean(child_pair_bls) if child_pair_bls else np.nan
+
+                rows.append({
+                    "sampling": sampling,
+                    "population_model": pop_model,
+                    "tree_index": tree_index,
+                    "total_branch_length_sim": total_bl,
+                    "tip_branch_length_sim": tip_bl,
+                    "mean_child_pair_branch_length_sim": mean_child_pair_bl,
+                })
+
+    return pd.DataFrame(rows)
+
+
+def plot_tree_length_by_scenario(df_tree_lengths, metric="total_branch_length_sim",
+                                  title=None, y_range=None):
+    """
+    Violin + strip plot of tree branch length metrics per scenario.
+
+    metric: "total_branch_length_sim" or "tip_branch_length_sim"
+    Two colors for the two sampling types (independenthomochronous and linearconstant).
+    One subplot per population model (columns) × mutation signal (rows).
+    """
+    pop_model_order = ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
+    title_map = {"expgrowthfast": "Exp-growth fast", "expgrowthslow": "Exp-growth slow",
+                 "uniform": "Uniform", "bottleneck": "Bottleneck"}
+
+    sampling_label_map = {"independenthomochronous": "Homochronous", "linearconstant": "Heterochronous"}
+    sampling_colors = {"independenthomochronous": "#397398", "linearconstant": "#a6444f"}
+    hue_order = ["independenthomochronous", "linearconstant"]
+
+    fig, axes = plt.subplots(1, len(pop_model_order),
+                             figsize=(4 * len(pop_model_order), 4),
+                             sharey=False, squeeze=False)
+
+    for j, pop_model in enumerate(pop_model_order):
+            ax = axes[0, j]
+            subset = df_tree_lengths[df_tree_lengths["population_model"] == pop_model]
+
+            if subset.empty:
+                ax.axis("off")
+                continue
+
+            sns.violinplot(data=subset, y=metric, x="sampling", hue="sampling",
+                           order=hue_order, palette=sampling_colors, cut=0, inner="box",
+                           density_norm="width", ax=ax, alpha=0.6, legend=False)
+            sns.stripplot(data=subset, y=metric, x="sampling", hue="sampling",
+                          order=hue_order, palette=sampling_colors, ax=ax,
+                          size=3, alpha=0.5, jitter=True, legend=False)
+            ax.grid(axis='y', linestyle='--', alpha=0.5, zorder=0)
+
+            if y_range:
+                ax.set_ylim(y_range)
+            ax.set_xlabel("")
+            ax.set_xticks([0, 1])
+            ax.set_xticklabels(["Homochronous", "Heterochronous"], fontsize=8, rotation=15, ha="right")
+            if j == 0:
+                ax.set_ylabel(metric, fontsize=9)
+            else:
+                ax.set_ylabel("")
+            ax.set_title(title_map.get(pop_model, pop_model), fontsize=11)
+
+    handles = [plt.Rectangle((0, 0), 1, 1, color=c, label=sampling_label_map[s])
+               for s, c in sampling_colors.items()]
+    fig.legend(handles=handles, loc='upper right', bbox_to_anchor=(0.98, 1.02),
+               ncol=2, frameon=False)
+    plt.suptitle(title or metric, fontsize=14)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    plt.show()
+
+
 def plot_bl_sim_vs_estimate_grid(
     tree_metrics_combined,
     pop_models,
     mutation_signals,
     tree_index=3,
-    n_values=200,
+    n_values=None,
     time_range=None,
     model="skyline",
     hetero_sampling="linearconstant",
@@ -1987,6 +2392,10 @@ def plot_bl_sim_vs_estimate_grid(
     alpha=0.3,
     s=20,
     figsize_per_subplot=(5, 4),
+    mode="bl",
+    substitution_rate=None,
+    genome_length=None,
+    sub_range=None,
 ):
     """
     Plot bl_sim vs bl_estimate for heterochronous and homochronous sampling.
@@ -1999,10 +2408,22 @@ def plot_bl_sim_vs_estimate_grid(
     - time_range: tuple (min_height, max_height), filter by height_sim
 
     Exactly one of n_values or time_range should be set.
-    """
 
-    if (n_values is None and time_range is None) or (n_values is not None and time_range is not None):
-        raise ValueError("Set exactly one of n_values or time_range. The other one must be None.")
+    mode="bl": plot raw branch lengths in years.
+    mode="expected_substitutions": multiply branch lengths by substitution_rate * genome_length
+        to get expected number of substitutions per branch.
+    """
+    if mode == "expected_substitutions":
+        if substitution_rate is None or genome_length is None:
+            raise ValueError("substitution_rate and genome_length must be set when mode='expected_substitutions'")
+        if not isinstance(genome_length, dict):
+            genome_length = {"low": genome_length, "med": genome_length, "high": genome_length}
+
+    if sub_range is not None:
+        n_values = None
+        time_range = None
+    elif n_values is not None and time_range is not None:
+        raise ValueError("Set at most one of n_values or time_range.")
 
     if time_range is not None:
         if not isinstance(time_range, tuple) or len(time_range) != 2:
@@ -2072,6 +2493,21 @@ def plot_bl_sim_vs_estimate_grid(
                 ax.axis("off")
                 continue
 
+            if mode == "expected_substitutions":
+                scale = substitution_rate * genome_length[mut_signal]
+                plot_df["bl_sim"]      = plot_df["bl_sim"] * scale
+                plot_df["bl_estimate"] = plot_df["bl_estimate"] * scale
+                xlabel = "Simulated expected substitutions"
+                ylabel = "Estimated expected substitutions"
+            else:
+                xlabel = "Simulated branch length (years)"
+                ylabel = "Estimated branch length (years)"
+
+            if sub_range is not None:
+                plot_df = plot_df[
+                    (plot_df["bl_sim"] >= sub_range[0]) & (plot_df["bl_sim"] <= sub_range[1])
+                ]
+
             color_map = {"heterochronous": "#a6444f", "homochronous": "#397398"}
             for sampling_type, group in plot_df.groupby("sampling_type"):
                 ax.scatter(
@@ -2086,17 +2522,12 @@ def plot_bl_sim_vs_estimate_grid(
             min_val = min(plot_df["bl_sim"].min(), plot_df["bl_estimate"].min())
             max_val = max(plot_df["bl_sim"].max(), plot_df["bl_estimate"].max())
 
-            ax.plot(
-                [min_val, max_val],
-                [min_val, max_val],
-                linestyle="--",
-                color="black",
-                linewidth=1,
-            )
+            ax.plot([min_val, max_val], [min_val, max_val],
+                    linestyle="--", color="black", linewidth=1)
 
             ax.set_title(f"{pop_model} | {mut_signal}")
-            ax.set_xlabel("Simulated branch length (bl_sim)")
-            ax.set_ylabel("Estimated branch length (bl_estimate)")
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
             ax.grid(alpha=0.3)
 
     handles, labels = axes[0, 0].get_legend_handles_labels()
