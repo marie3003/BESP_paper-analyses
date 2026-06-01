@@ -40,14 +40,14 @@ outputbase <- file.path(script_dir, "../results/run_bottleneck/simulated_data/")
 #                            maxtime_hetero    = c(NA, NA, 500, 300))     # heterochronous: NULL=auto for expgrowth, fixed for others
 
 # trying out new bottleneck scenarios
-trajectories <- data.frame(row.names         =c("bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling"),
-                           names             =c("Bottleneck (Depth 20)", "Bottleneck (Depth 50)", "Bottleneck (Depth 100)", "Bottleneck (Depth 200)", "Later Bottleneck", "Later Bottleneck (sampling through)"),
+trajectories <- data.frame(row.names         =c("bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50"),
+                           names             =c("Bottleneck (Depth 20)", "Bottleneck (Depth 50)", "Bottleneck (Depth 100)", "Bottleneck (Depth 200)", "Later Bottleneck", "Later Bottleneck (sampling through)", "Mid Bottleneck (Depth 50)"),
                            # only used for plotting
-                           maxdensity        = c(0.1, 0.1, 0.1, 0.1, 0.1, 0.1),
-                           maxlineages       = c(100, 100, 100, 100, 100, 100),
-                           samp_end          = c(30, 30, 30, 30, 30, 100),
-                           maxtime_homo      = c(50, 50, 50, 50, 100, 100),
-                           maxtime_hetero    = c(300, 300, 300, 300, 300, 300))
+                           maxdensity        = c(0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1),
+                           maxlineages       = c(100, 100, 100, 100, 100, 100, 100),
+                           samp_end          = c(30, 30, 30, 30, 30, 100, 30),
+                           maxtime_homo      = c(50, 50, 50, 50, 100, 100, 50),
+                           maxtime_hetero    = c(300, 300, 300, 300, 300, 300, 300))
 
 
 # --- Plotting helper functions ------------------------------------------------
