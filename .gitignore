@@ -41,6 +41,7 @@ scripts/.log
 
 results/run1/simulated_data/**/*_snps.fasta
 results/run1/simulated_data_test/
+results/run_bottleneck/beast_inference/
 
 benchmarks/
 results/run1/beast_inference/
