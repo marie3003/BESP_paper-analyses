@@ -9,7 +9,7 @@
 
 SAMPLING_TYPES = ["independenthomochronous", "linearconstant"]
 #POP_MODELS     = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
-POP_MODELS = ["bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50"]
+POP_MODELS = ["bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50", "bottleneckmid100"]
 #NREPLICATES    = 100
 NREPLICATES = 10
 INFERENCE      = ["constcoal", "skyline"]
@@ -33,7 +33,7 @@ def get_burnin(wildcards):
     if wildcards.model == "constcoal":
         return 3000000        # 10% of 30M
     if wildcards.sampling == "independenthomochronous":
-        if wildcards.popmodel in ("bottleneck", "bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50"):
+        if wildcards.popmodel in ("bottleneck", "bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50", "bottleneckmid100"):
             return 30000000  # 10% of 300M (all mutsigs)
         elif wildcards.mutsig == "highmutsig":
             return 5000000    # 10% of 50M
@@ -42,7 +42,7 @@ def get_burnin(wildcards):
         else:                 # lowmutsig
             return 30000000   # 10% of 300M
     else:  # linearconstant
-        if wildcards.popmodel in ("bottleneck", "bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50"):
+        if wildcards.popmodel in ("bottleneck", "bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50", "bottleneckmid100"):
             return 20000000   # 10% of 200M
         elif wildcards.mutsig == "lowmutsig":
             return 12000000   # 10% of 120M

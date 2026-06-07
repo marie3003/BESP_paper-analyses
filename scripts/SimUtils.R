@@ -1,6 +1,64 @@
 require(phylodyn)
 require(ape)
 
+# Override phylodyn's generate_newick to sample a random PAIR of lineages at
+# each coalescent event, rather than a random lineage + its array-neighbor.
+# The original implementation only coalesces adjacent entries in temp_labels,
+# which forces contemporaneous samples (always neighbors) to always be sister
+# taxa and produces caterpillar trees regardless of the population model.
+generate_newick <- function(args)
+{
+  n      <- sum(args$n_sampled)
+  labels <- paste(rep("t",n), seq(1,n,1), rep("_",n), rep(args$samp_times[1],args$n_sampled[1]), sep="")
+
+  tb           <- args$n_sampled[1]
+  s            <- 0
+  temp_labels  <- labels[1:tb]
+  temp_times   <- rep(args$samp_times[1], args$n_sampled[1])
+  initial.row  <- 2
+  args2        <- phylodyn:::gen_INLA_args(args$samp_times, args$n_sampled, args$coal_times)
+
+  for (j in 2:length(args2$event))
+  {
+    if (args2$event[j] == 1)
+    {
+      s  <- args2$s[j]
+      ra <- sample(tb, 2)           # pick any TWO distinct lineages uniformly
+      i1 <- ra[1]; i2 <- ra[2]
+      new_label       <- paste("(", temp_labels[i1], ":", s - temp_times[i1],
+                               ",", temp_labels[i2], ":", s - temp_times[i2], ")", sep="")
+      temp_labels[i1] <- new_label
+      temp_times[i1]  <- s
+      temp_labels      <- temp_labels[-i2]
+      temp_times       <- temp_times[-i2]
+      tb <- tb - 1
+    }
+    else
+    {
+      s <- args2$s[j]
+      if (args$n_sampled[initial.row] == 1)
+      {
+        temp_labels <- c(temp_labels, labels[cumsum(args$n_sampled)[initial.row]])
+        temp_times  <- c(temp_times, s)
+        initial.row <- initial.row + 1
+        tb          <- tb + 1
+      } else {
+        end <- cumsum(args$n_sampled)[initial.row]
+        ini <- cumsum(args$n_sampled)[initial.row - 1] + 1
+        for (k in ini:end) {
+          temp_labels <- c(temp_labels, labels[k])
+          temp_times  <- c(temp_times, s)
+          tb          <- tb + 1
+        }
+        initial.row <- initial.row + 1
+      }
+    }
+  }
+
+  out.tree <- ape::read.tree(text = paste(temp_labels, ";", sep=""))
+  return(list(newick=out.tree, labels=labels))
+}
+
 bottleneck_traj_param <- function(t, start=0.5, stop=1, min=0.1, max=1) {
     result = rep(0,length(t))
     result[t <= start] <- max
@@ -49,6 +107,7 @@ get_trajectory <- function(type) {
           "bottlenecklate" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=50, stop=53),
           "bottlenecklatesampling" = function(t) bottleneck_traj_param(t, min=unif_lower, max=unif_upper, start=50, stop=53),
           "bottleneckmid50" = function(t) bottleneck_traj_param(t, min=50, max=unif_upper, start=20, stop=23),
+          "bottleneckmid100" = function(t) bottleneck_traj_param(t, min=100, max=unif_upper, start=20, stop=23),
     )
 }
 
