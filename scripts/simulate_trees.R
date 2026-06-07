@@ -21,6 +21,12 @@ get_script_dir <- function() {
 script_dir <- get_script_dir()
 source(file.path(script_dir, "SimUtils.R"))
 
+# Optional CLI arguments: popmodel sampling_type
+# e.g. Rscript simulate_trees.R bottleneckmid100 linearconstant
+cli_args      <- commandArgs(trailingOnly = TRUE)
+filter_pop    <- if (length(cli_args) >= 1) cli_args[1] else NULL
+filter_samp   <- if (length(cli_args) >= 2) cli_args[2] else NULL
+
 # Global settings
 nreplicates <- 10
 samp_start  <- 0
@@ -138,23 +144,26 @@ summariseSims <- function(sims, maxdensity=0.05, maxlineages=100, maxtime=NULL) 
 
 # simulate trees with independent homogeneous sampling
 
-set.seed(9)
-outputpath <- file.path(outputbase, "independenthomochronous")
-for (i in 1:nrow(trajectories)) {
+if (is.null(filter_samp) || filter_samp == "independenthomochronous") {
+  set.seed(9)
+  outputpath <- file.path(outputbase, "independenthomochronous")
+  traj_subset <- if (!is.null(filter_pop)) trajectories[rownames(trajectories) == filter_pop, , drop=FALSE] else trajectories
+  for (i in 1:nrow(traj_subset)) {
 
-  trajname <- rownames(trajectories)[i]
-  cat(paste0("## ",trajectories$names[i],"\n"))
+    trajname <- rownames(traj_subset)[i]
+    cat(paste0("## ",traj_subset$names[i],"\n"))
 
-  traj <- lapply(rep(trajname, nreplicates), get_trajectory)
-  sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_start, nlimit=nlimit)
-  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=FALSE, newick=TRUE, json=FALSE)
+    traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+    sims <- lapply(traj, simulate_genealogy, samp_type="independent", nrsamples=nrsamples, samp_start=samp_start, samp_end=samp_start, nlimit=nlimit)
+    sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=FALSE, newick=TRUE, json=FALSE)
 
-  pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
-  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i], maxtime=trajectories$maxtime_homo[i])
-  title(main=trajectories$names[i],
-        sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ",nrsamples, ", Sampling period: [",samp_start,",",samp_start,"]"),
-        outer=TRUE, line=-1.0)
-  dev.off()
+    pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
+    summariseSims(sims, maxdensity=traj_subset$maxdensity[i], maxlineages=traj_subset$maxlineages[i], maxtime=traj_subset$maxtime_homo[i])
+    title(main=traj_subset$names[i],
+          sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ",nrsamples, ", Sampling period: [",samp_start,",",samp_start,"]"),
+          outer=TRUE, line=-1.0)
+    dev.off()
+  }
 }
 
 # simulate trees with independent heterochroneous sampling
@@ -178,23 +187,26 @@ for (i in 1:nrow(trajectories)) {
 # }
 
 #simulate trees with preferential heterogeneous sampling, 1 epoch
-set.seed(9)
-outputpath <- file.path(outputbase, "linearconstant")
-for (i in 1:nrow(trajectories)) {
+if (is.null(filter_samp) || filter_samp == "linearconstant") {
+  set.seed(9)
+  outputpath <- file.path(outputbase, "linearconstant")
+  traj_subset <- if (!is.null(filter_pop)) trajectories[rownames(trajectories) == filter_pop, , drop=FALSE] else trajectories
+  for (i in 1:nrow(traj_subset)) {
 
-  trajname <- rownames(trajectories)[i]
-  cat(paste0("## ",trajectories$names[i],"\n"))
+    trajname <- rownames(traj_subset)[i]
+    cat(paste0("## ",traj_subset$names[i],"\n"))
 
-  traj <- lapply(rep(trajname, nreplicates), get_trajectory)
-  sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=trajectories$samp_end[i], nlimit=nlimit)
-  sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=FALSE, newick=TRUE, json=FALSE)
+    traj <- lapply(rep(trajname, nreplicates), get_trajectory)
+    sims <- lapply(traj, simulate_genealogy, samp_type="preferential", nrsamples=nrsamples, samp_start=samp_start, samp_end=traj_subset$samp_end[i], nlimit=nlimit)
+    sims <- save_simulation(sims, basename=trajname, path=paste0(file.path(outputpath, trajname), "/"), RData=TRUE, csv=FALSE, newick=TRUE, json=FALSE)
 
-  pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
-  summariseSims(sims, maxdensity=trajectories$maxdensity[i], maxlineages=trajectories$maxlineages[i], maxtime=trajectories$maxtime_hetero[i])
-  title(main=trajectories$names[i],
-        sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ~",nrsamples, ", Sampling period: [",samp_start,",",trajectories$samp_end[i],"]"),
-        outer=TRUE, line=-1.0)
-  dev.off()
+    pdf(file.path(outputpath, trajname, paste0(trajname, ".pdf")), width=12, height=10)
+    summariseSims(sims, maxdensity=traj_subset$maxdensity[i], maxlineages=traj_subset$maxlineages[i], maxtime=traj_subset$maxtime_hetero[i])
+    title(main=traj_subset$names[i],
+          sub=paste0("Nr. replicates: ",nreplicates, ", Nr. samples: ~",nrsamples, ", Sampling period: [",samp_start,",",traj_subset$samp_end[i],"]"),
+          outer=TRUE, line=-1.0)
+    dev.off()
+  }
 }
 
 # simulate trees with bottleneck trajectories (varying depth and width)

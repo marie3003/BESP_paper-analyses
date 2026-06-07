@@ -10,7 +10,7 @@ TEMPLATE_SKYLINE="results/run_bottleneck/templates/template_skyline.xml"
 mkdir -p "$OUTDIR"
 
 SAMPLING_TYPES=("independenthomochronous" "linearconstant")
-POP_MODELS=("bottleneck20" "bottleneck50" "bottlenecklate" "bottlenecklatesampling")
+POP_MODELS=("bottleneck20" "bottleneck50" "bottleneck100" "bottleneck200" "bottlenecklate" "bottlenecklatesampling" "bottleneckmid50" "bottleneckmid100")
 
 get_snpfraction() {
     case $1 in

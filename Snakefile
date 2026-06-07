@@ -99,22 +99,19 @@ rule simulate_trees:
         script = "scripts/simulate_trees.R",
         utils  = "scripts/SimUtils.R",
     output:
-        expand(
-            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
-            sampling=SAMPLING_TYPES, popmodel=POP_MODELS
-        )
+        f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees"
     log:
-        "logs/simulate_trees/simulate_trees.log"
+        "logs/simulate_trees/{sampling}_{popmodel}.log"
     envmodules:
         "stack/2024-06",
         "gcc/12.2.0",
         "r/4.4.0",
     resources:
         mem_mb_per_cpu = 4000,
-        runtime = 300,     # 5h
-        cpus_per_task = 16,
+        runtime = 60,
+        cpus_per_task = 1,
     shell:
-        "Rscript {input.script} > {log} 2>&1"
+        "Rscript {input.script} {wildcards.popmodel} {wildcards.sampling} > {log} 2>&1"
 
 
 # =============================================================================
