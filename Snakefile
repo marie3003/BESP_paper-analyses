@@ -109,7 +109,7 @@ rule simulate_trees:
     resources:
         mem_mb_per_cpu = 4000,
         runtime = 60,
-        cpus_per_task = 1,
+        cpus_per_task = 4,
     shell:
         "Rscript {input.script} {wildcards.popmodel} {wildcards.sampling} > {log} 2>&1"
 
