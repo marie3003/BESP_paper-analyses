@@ -31,5 +31,13 @@ sed "s|{\$nreplicates}|${NREPLICATES}|g; s|{\$filebase}|${FILEBASE}|g" "$TEMPLAT
 mkdir -p "${FILEBASE}/${SAMPLING}/${POPMODEL}"
 
 beast -overwrite -seed "$SEED" "$TMPXML"
-
 rm "$TMPXML"
+
+# Convert NEXUS output to one plain newick per line
+NEXUS="${FILEBASE}/${SAMPLING}/${POPMODEL}/${POPMODEL}.trees"
+TMPNWK=$(mktemp)
+grep "^tree STATE_" "$NEXUS" \
+    | sed 's/^tree STATE_[0-9]* = //' \
+    | sed 's/\[&[^]]*\]//g' \
+    > "$TMPNWK"
+mv "$TMPNWK" "$NEXUS"
