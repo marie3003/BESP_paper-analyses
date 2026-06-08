@@ -7,7 +7,10 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --array=0-7
 
-module load stack/2024-06 gcc/12.2.0 openjdk/21.0.3_9 beast2/2.7.4
+module load stack/2024-06
+module load gcc/12.2.0
+module load openjdk/21.0.3_9
+module load beast2/2.7.4
 
 SAMPLING_TYPES=("independenthomochronous" "independenthomochronous" "independenthomochronous" "independenthomochronous"
                 "linearconstant" "linearconstant" "linearconstant" "linearconstant")
@@ -27,6 +30,6 @@ sed "s|{\$nreplicates}|${NREPLICATES}|g; s|{\$filebase}|${FILEBASE}|g" "$TEMPLAT
 
 mkdir -p "${FILEBASE}/${SAMPLING}/${POPMODEL}"
 
-beast -seed "$SEED" "$TMPXML"
+beast -overwrite -seed "$SEED" "$TMPXML"
 
 rm "$TMPXML"
