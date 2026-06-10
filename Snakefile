@@ -122,7 +122,7 @@ rule simulate_trees:
         TMPNWK=$(mktemp)
         grep "^tree STATE_" "$NEXUS" \
             | sed 's/^tree STATE_[0-9]* = //' \
-            | sed 's/\[&[^]]*\]//g' \
+            | sed 's/\\[&[^]]*\\]//g' \
             > "$TMPNWK"
         mv "$TMPNWK" "$NEXUS"
         """
