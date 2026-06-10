@@ -79,22 +79,6 @@ rule all_alignments:
         f"{SIMDATA}/snp_summary.csv"
 
 
-rule all_beast_test:
-    input:
-        expand(
-            f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T0.log",
-            model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, seed=SEEDS
-        )
-
-
-rule all_beast:
-    input:
-        expand(
-            f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
-            model=INFERENCE, sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, seed=SEEDS, i=range(NREPLICATES)
-        )
-
-
 rule all_xmls:
     input:
         expand(
@@ -199,15 +183,19 @@ rule snp_summary:
             parts = f.split("/")
             sampling = parts[-3]
             popmodel = parts[-2]
-            i = os.path.basename(f).replace("_snps.fasta", "").split("_")[-1]
+            basename = os.path.basename(f).replace("_snps.fasta", "")
+            # filename: {popmodel}_{i}_{mutsig}_snps.fasta
+            basename_parts = basename.split("_")
+            mutsig = basename_parts[-1]
+            i = basename_parts[-2]
             with open(f) as fh:
                 for line in fh:
                     if not line.startswith(">"):
                         n_snps = len(line.strip())
                         break
-            rows.append(f"{sampling},{popmodel},{i},{n_snps}")
+            rows.append(f"{sampling},{popmodel},{i},{mutsig},{n_snps}")
         with open(output[0], "w") as out:
-            out.write("sampling,popmodel,replicate,n_snps\n")
+            out.write("sampling,popmodel,replicate,mutsig,n_snps\n")
             out.write("\n".join(rows) + "\n")
 
 
