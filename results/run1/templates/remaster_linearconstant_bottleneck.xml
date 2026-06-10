@@ -6,12 +6,12 @@
   <run spec="Simulator" nSims="{$nreplicates}">
     <simulate id="tree" spec="SimulatedTree">
       <trajectory id="traj" spec="CoalescentTrajectory" maxTrajLogAge="10" loggingGridSize="1000">
-        <population id="pop" spec="CompoundPopulationModel" changeTimes="10.0 13.0">
+        <population id="pop" spec="CompoundPopulationModel" changeTimes="20.0 23.0">
           <populationModel spec="ConstantPopulation" popSize="1000.0"/>
           <populationModel spec="ConstantPopulation" popSize="100.0"/>
           <populationModel spec="ConstantPopulation" popSize="1000.0"/>
         </population>
-        <reaction spec="Reaction" rate="9.15750916 0.91575092 9.15750916 0.00000000" changeTimes="10 13 30">0 -> pop</reaction>
+        <reaction spec="Reaction" rate="9.15750916 0.91575092 9.15750916 0.00000000" changeTimes="20 23 30">0 -> pop</reaction>
       </trajectory>
     </simulate>
 

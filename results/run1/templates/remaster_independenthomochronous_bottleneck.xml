@@ -6,7 +6,7 @@
   <run spec="Simulator" nSims="{$nreplicates}">
     <simulate id="tree" spec="SimulatedTree">
       <trajectory id="traj" spec="CoalescentTrajectory" maxTrajLogAge="10" loggingGridSize="1000">
-        <population id="pop" spec="CompoundPopulationModel" changeTimes="10.0 13.0">
+        <population id="pop" spec="CompoundPopulationModel" changeTimes="20.0 23.0">
           <populationModel spec="ConstantPopulation" popSize="1000.0"/>
           <populationModel spec="ConstantPopulation" popSize="100.0"/>
           <populationModel spec="ConstantPopulation" popSize="1000.0"/>

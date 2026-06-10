@@ -10,8 +10,7 @@
 SAMPLING_TYPES = ["independenthomochronous", "linearconstant"]
 POP_MODELS     = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
 #POP_MODELS = ["bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50", "bottleneckmid100"]
-#NREPLICATES    = 100
-NREPLICATES = 10
+NREPLICATES = 100
 INFERENCE      = ["constcoal", "skyline"]
 MUTSIGS        = ["lowmutsig", "medmutsig", "highmutsig"]
 MUTSIG_LENGTHS = {"lowmutsig": 1000000, "medmutsig": 5000000, "highmutsig": 10000000}
