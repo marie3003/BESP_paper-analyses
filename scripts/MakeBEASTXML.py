@@ -93,39 +93,36 @@ for filename in sorted(os.listdir(inputpath)):
         i = 0		
         for tree in treefile:
             
-            # Define path to SNP alignment
-            snp_input_path = pars["trees"].replace(".trees", f"_{i}_snps.fasta")
+            # Define path to SNP alignment (mutsig-specific, no subsampling)
+            mutsig = pars["mutsig"]
+            snp_input_path = pars["trees"].replace(".trees", f"_{i}_{mutsig}_snps.fasta")
 
             if not os.path.exists(snp_input_path):
                 raise FileNotFoundError(f"SNP alignment not found: {snp_input_path}")
 
-            # Subsample SNPs to max nSites
-            aln_path = os.path.join(outputpath, f"aln_{i}.fasta")
-            snp_sites = subsample_fasta_columns(snp_input_path, aln_path, pars["snpFraction"])
-
             # Parse alignment and add to parameters
-            pars_alignment(aln_path, pars)
+            pars_alignment(snp_input_path, pars)
 
             pars["tree"]  = tree
             pars_dates(tree, pars)
-            
 
-            # Create XML file			
+            # Adjust clock rate: rate per SNP site = rate per bp * alignment_length / n_snps
+            records = list(SeqIO.parse(snp_input_path, "fasta"))
+            n_snps = len(records[0].seq) if records else 1
+
+            # Create XML file
             pars["name"] = basename+".T"+str(i)
             original_clock_rate = pars["clockRate"]
-            pars["clockRate"] = pars["clockRate"] * 10000000 / snp_sites  # Adjust clock rate based on alignment length
+            pars["clockRate"] = pars["clockRate"] * pars["alignmentLength"] / n_snps
             makeXMLFile(pars, template, outputfile=pars["name"], outputpath=outputpath)
             pars["clockRate"] = original_clock_rate  # Restore original clock rate for next tree
 
             # Write command to scripts
             for seed in seeds:
-                cmd ="java -jar -Xms2G -Xmx4G $1 -overwrite -seed %d %s" % (seed, pars["name"]+".xml") 
+                cmd ="java -jar -Xms2G -Xmx4G $1 -overwrite -seed %d %s" % (seed, pars["name"]+".xml")
                 scriptfile.write("%s\n" % (cmd))
 
             i += 1
-
-            # Delete temporary files
-            os.remove(aln_path)
             
             
         treefile.close()		

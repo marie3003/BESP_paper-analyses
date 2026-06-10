@@ -1,4 +1,5 @@
 from Bio import Nexus, Phylo, SeqIO
+from math import comb, exp, inf
 from collections import defaultdict
 from io import StringIO
 
@@ -33,9 +34,8 @@ def extract_tree_index(tree_path):
 
 def extract_model_components(tree_name):
     model = "skyline" if "skyline" in tree_name else "constcoal"
-    growth_model = "expgrowthfast" if "expgrowthfast" in tree_name else \
-                   "expgrowthslow" if "expgrowthslow" in tree_name else \
-                   "bottleneck" if "bottleneck" in tree_name else "uniform"
+    pop_match = re.search(r"(expgrowthfast|expgrowthslow|bottleneck[a-z0-9]*|uniform)", tree_name)
+    growth_model = pop_match.group(1) if pop_match else "unknown"
     mutsig = "low" if "lowmutsig" in tree_name else \
              "med" if "medmutsig" in tree_name else "high"
     sampling = "linearconstant" if "linearconstant" in tree_name else "independenthomochronous"
@@ -51,20 +51,49 @@ def assign_model_params(pop_model):
     elif pop_model == "bottleneck":
         return pd.Series({"present_pop_size": 1000, "growth_rate": None,
                           "bottleneck_size": 10, "bottleneck_start": 10, "bottleneck_end": 13})
+    elif pop_model == "bottleneck20":
+        return pd.Series({"present_pop_size": 1000, "growth_rate": None,
+                          "bottleneck_size": 20, "bottleneck_start": 10, "bottleneck_end": 13})
+    elif pop_model == "bottleneck50":
+        return pd.Series({"present_pop_size": 1000, "growth_rate": None,
+                          "bottleneck_size": 50, "bottleneck_start": 10, "bottleneck_end": 13})
+    elif pop_model == "bottleneck100":
+        return pd.Series({"present_pop_size": 1000, "growth_rate": None,
+                          "bottleneck_size": 100, "bottleneck_start": 10, "bottleneck_end": 13})
+    elif pop_model == "bottleneck200":
+        return pd.Series({"present_pop_size": 1000, "growth_rate": None,
+                          "bottleneck_size": 200, "bottleneck_start": 10, "bottleneck_end": 13})
+    elif pop_model in ("bottlenecklate", "bottlenecklatesampling"):
+        return pd.Series({"present_pop_size": 1000, "growth_rate": None,
+                          "bottleneck_size": 10, "bottleneck_start": 50, "bottleneck_end": 53})
+    elif pop_model == "bottleneckmid50":
+        return pd.Series({"present_pop_size": 1000, "growth_rate": None,
+                          "bottleneck_size": 50, "bottleneck_start": 20, "bottleneck_end": 23})
+    elif pop_model == "bottleneckmid100":
+        return pd.Series({"present_pop_size": 1000, "growth_rate": None,
+                          "bottleneck_size": 100, "bottleneck_start": 20, "bottleneck_end": 23})
     else:  # uniform
         return pd.Series({"present_pop_size": 1000, "growth_rate": None,
                           "bottleneck_size": None, "bottleneck_start": None, "bottleneck_end": None})
 
-def process_results(input_csv):
+def process_results(input_csv, population_models=None):
     """
     Use all successful runs from the paths csv file.
     """
+    if population_models is None:
+        population_models = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
+
     repo_base = Path("/Users/mariebecker/Documents/Uni/ETH/RotationStadler/BESP_paper-analyses")
+
+    # infer run folder from the csv path (e.g. results/run_bottleneck/... -> run_bottleneck)
+    csv_parts = Path(input_csv).parts
+    run_folder = next((p for p in csv_parts if p.startswith("run")), "run1")
 
     df = pd.read_csv(input_csv)
 
     def to_local_path(p, suffix):
         rel = p.replace("/cluster/work/stadler/beckermar/BESP_paper-analyses/", "")
+        rel = rel.lstrip("/")
         return str(repo_base / rel.replace(".combined.trees", suffix))
 
     df["tree_path"] = df["trees_path"].apply(lambda p: to_local_path(p, ".combined_summary.tree"))
@@ -87,7 +116,7 @@ def process_results(input_csv):
     # Build complete expected index and left-join to find completely missing runs
     all_combos = pd.DataFrame(
         list(itertools.product(
-            ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"],
+            population_models,
             ["low", "med", "high"],
             ["independenthomochronous", "linearconstant"],
             range(100)
@@ -98,7 +127,7 @@ def process_results(input_csv):
     merged = all_combos.merge(merged, on=shared_cols, how="left")
 
     # Add sim_tree_path
-    sim_base = repo_base / "results/run1/simulated_data"
+    sim_base = repo_base / "results" / run_folder / "simulated_data"
     merged["sim_tree_path"] = merged.apply(
         lambda r: str(sim_base / r["sampling"] / r["population_model"] / f"{r['population_model']}.trees"),
         axis=1
@@ -164,6 +193,95 @@ def get_median_population_size(log_path, burnin=0, mode="constcoal"):
 
     else:
         raise ValueError("mode must be either 'constcoal' or 'skyline'")
+
+
+def process_skygrid_logs(skygrid_dir, burnin=0.1):
+    """
+    Scan a skygrid beast_inference directory, parse each .log file, and return
+    a DataFrame with per-grid-point median and 95% HPD population sizes.
+
+    Directory structure expected:
+        skygrid_dir / sampling / pop_model / mutsig / *.log
+
+    Parameters:
+        skygrid_dir: path to the skygrid beast_inference folder
+        burnin: fraction of samples to discard as burn-in (default 0.1 = 10%)
+
+    Returns:
+        DataFrame with columns:
+            sampling, population_model, mutation_signal, tree_index,
+            grid_point (0-indexed), time (years before present),
+            median, hpd_lower, hpd_upper (population size, linear scale)
+    """
+    skygrid_dir = Path(skygrid_dir)
+    records = []
+
+    for log_path in sorted(skygrid_dir.rglob("*.log")):
+        if "slurm" in log_path.name:
+            continue
+
+        # parse metadata from filename
+        components = extract_model_components(log_path.stem)
+        model, pop_model, mutsig, sampling = components
+
+        match = re.search(r"\.T(\d+)$", log_path.stem)
+        if not match:
+            continue
+        tree_index = int(match.group(1))
+
+        df = pd.read_csv(log_path, comment="#", sep="\t")
+
+        # apply burn-in
+        n_burnin = int(len(df) * burnin) if isinstance(burnin, float) else burnin
+        df = df.iloc[n_burnin:]
+
+        logpop_cols = sorted(
+            [c for c in df.columns if c.startswith("skygrid.logPopSize")],
+            key=lambda c: int(re.search(r"\d+$", c).group())
+        )
+        if not logpop_cols:
+            continue
+
+        cut_off = df["skygrid.cutOff"].iloc[0]
+        n_points = len(logpop_cols)
+        # left boundaries: 0, 5, 10, ..., cutOff (evenly spaced)
+        # last interval extends from cutOff to the root — store median root height separately
+        times = np.linspace(0, cut_off, n_points)
+        median_root_height = np.median(df["treeModel.rootHeight"].values)
+
+        row = {
+            "sampling": sampling,
+            "population_model": pop_model,
+            "mutation_signal": mutsig,
+            "tree_index": tree_index,
+            "cut_off": cut_off,
+            "median_root_height": median_root_height,
+        }
+
+        for i, col in enumerate(logpop_cols):
+            pop_samples = np.exp(df[col].values)
+            median = np.median(pop_samples)
+            sorted_samples = np.sort(pop_samples)
+            n = len(sorted_samples)
+            hpd_window = int(np.floor(0.95 * n))
+            min_width = np.inf
+            hpd_lower, hpd_upper = sorted_samples[0], sorted_samples[-1]
+            for j in range(n - hpd_window):
+                width = sorted_samples[j + hpd_window] - sorted_samples[j]
+                if width < min_width:
+                    min_width = width
+                    hpd_lower = sorted_samples[j]
+                    hpd_upper = sorted_samples[j + hpd_window]
+
+            row[f"median_{i}"] = median
+            row[f"hpd_lower_{i}"] = hpd_lower
+            row[f"hpd_upper_{i}"] = hpd_upper
+            row[f"time_{i}"] = times[i]
+
+        records.append(row)
+
+    return pd.DataFrame(records)
+
     
 
 
@@ -390,13 +508,15 @@ def tree_metrics_all_trees(path_df):
     Returns a long-format DataFrame with one row per node per replicate per model,
     with columns for errors, CIs, model metadata (model, growth_model, mutsig, sampling).
     """
+    sim_tree_cache = {}
     results = []
     for _, row in path_df.iterrows():
         tree_constcoal = Phylo.read(row["tree_path_constcoal"], "nexus")
         tree_skyline = Phylo.read(row["tree_path_skyline"], "nexus")
-        sim_trees = list(Phylo.parse(row["sim_tree_path"], "newick"))
-        tree_sim = sim_trees[row["tree_index"]]
-        
+        if row["sim_tree_path"] not in sim_tree_cache:
+            sim_tree_cache[row["sim_tree_path"]] = list(Phylo.parse(row["sim_tree_path"], "newick"))
+        tree_sim = sim_tree_cache[row["sim_tree_path"]][row["tree_index"]]
+
         eval_df_constcoal = compare_tree_metrics(tree_sim, tree_constcoal)
         eval_df_skyline = compare_tree_metrics(tree_sim, tree_skyline)
 
@@ -615,7 +735,7 @@ def cumulative_true_pop_size(t, pop_model, row):
         return N0 / r * (1 - np.exp(-r * t))
     elif pop_model == "uniform":
         return row["present_pop_size"] * t
-    elif pop_model == "bottleneck":
+    elif pop_model.startswith("bottleneck"):
         N0 = row["present_pop_size"]
         Nb = row["bottleneck_size"]
         bs = row["bottleneck_start"]
@@ -722,12 +842,20 @@ def add_population_size_errors(node_df, tree_df):
     result['cum_pop_size_abs_error'] = np.abs(result['cum_pop_size_error'])
     result['cum_pop_size_error_relsim'] = result['cum_pop_size_error'] / result['cum_pop_size_sim']
 
-    list_cols = ['skyline_times', 'skyline_medians', 'skyline_cumulative_medians',
-                 'skyline_cumulative_lowers', 'skyline_cumulative_uppers',
-                 'skyline_lowers', 'skyline_uppers', 'skyline_samples', 'coalescent_samples',
-                 'tree_path_constcoal', 'log_path_constcoal', 'tree_path_skyline',
-                 'log_path_skyline', 'sim_tree_path']
-    return result.drop(columns=[c for c in list_cols if c in result.columns])
+    drop_cols = [
+        # list/array columns
+        'skyline_times', 'skyline_medians', 'skyline_cumulative_medians',
+        'skyline_cumulative_lowers', 'skyline_cumulative_uppers',
+        'skyline_lowers', 'skyline_uppers', 'skyline_samples', 'coalescent_samples',
+        # path columns
+        'tree_path_constcoal', 'log_path_constcoal', 'tree_path_skyline',
+        'log_path_skyline', 'sim_tree_path',
+        # scalar overview_df_ columns (kept there, not needed per-node)
+        'root_height', 'total_branch_length_sim', 'tip_branch_length_sim',
+        'present_pop_size', 'growth_rate', 'bottleneck_size', 'bottleneck_start', 'bottleneck_end',
+        'coalescent_median', 'coalescent_lower', 'coalescent_upper',
+    ]
+    return result.drop(columns=[c for c in drop_cols if c in result.columns])
 
 def get_root_height_df(tree_metrics_combined):
     """Extract root node rows and drop branch length columns, returning one row per replicate per model."""
@@ -748,7 +876,9 @@ def get_root_height_df_wide(root_height_df):
                   'est_pop_size', 'diff_pop_size', 'abs_diff_pop_size',
                   'rel_diff_pop_size', 'abs_rel_diff_pop_size',
                   'cum_pop_size_est', 'cum_pop_size_error', 'cum_pop_size_abs_error', 'cum_pop_size_error_relsim', 'root_cum_pop_size_error',
-                  'rel_cum_pop_size_error']
+                  'rel_cum_pop_size_error',
+                  'ci_true', 'ci_estimated', 'ci_diff', 'ci_rel_error', 'ci_abs_diff', 'ci_abs_rel_error',
+                  'rate_true', 'rate_estimated', 'rate_diff', 'rate_rel_error', 'rate_abs_diff', 'rate_abs_rel_error']
 
     # Columns identical across models — keep once as index
     shared_cols = ['tree_index', 'mutation_signal', 'population_model', 'sampling',
@@ -1019,12 +1149,13 @@ def plot_population_summary_ax(ax, skyline_all_times, skyline_all_medians, const
     ax.set_ylabel("Population Size")
     ax.invert_xaxis()
 
-def plot_population_summary(path_info_df, sampling, x_range=None, title="", y_range=None, add_samples=False, mode='both'):
+def plot_population_summary(path_info_df, sampling, x_range=None, title="", y_range=None, add_samples=False, mode='both', pop_models=None):
     """
     Summary plot per condition (mutation signal × population model) for a given sampling type,
     showing median and 95% CI for skyline and constant-coalescent estimates.
     """
-    pop_models = ["uniform", "expgrowthfast", "expgrowthslow", "bottleneck"]
+    if pop_models is None:
+        pop_models = sorted(path_info_df["population_model"].unique())
     mut_signals = ["low", "med", "high"]
     ncols, nrows = len(pop_models), len(mut_signals)
 
@@ -1104,6 +1235,106 @@ def plot_population_summary(path_info_df, sampling, x_range=None, title="", y_ra
             handles.append(grey_line)
             labels.append('Sample Constant Trajectories')
     fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=3)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.suptitle(f"{title} ({sampling})")
+    plt.show()
+
+
+def plot_skygrid_summary(skygrid_df, sampling, true_traj_fn=None, x_range=None, y_range=None,
+                         title="", pop_models=None):
+    """
+    Plot skygrid population size estimates for each scenario (mut signal × pop model),
+    one line per tree replicate, plus the true trajectory.
+
+    Parameters:
+        skygrid_df: DataFrame from process_skygrid_logs()
+        sampling: "independenthomochronous" or "linearconstant"
+        true_traj_fn: optional dict {pop_model: callable(t)} overriding get_true_traj
+        x_range: (min, max) time axis — x-axis is inverted (time before present)
+        y_range: (min, max) y axis
+        title: plot title
+        pop_models: list of pop models to show; inferred from data if None
+    """
+    df = skygrid_df[skygrid_df["sampling"] == sampling]
+    if pop_models is None:
+        pop_models = sorted(df["population_model"].unique())
+    mut_signals = ["low", "med", "high"]
+
+    ncols, nrows = len(pop_models), len(mut_signals)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.5 * nrows))
+    if nrows == 1:
+        axes = np.expand_dims(axes, axis=0)
+    if ncols == 1:
+        axes = np.expand_dims(axes, axis=1)
+
+    color_skygrid = "#4e9a8a"
+    color_true    = "#a6444f"
+
+    for i, mut_sig in enumerate(mut_signals):
+        for j, pop_model in enumerate(pop_models):
+            ax = axes[i][j]
+            subset = df[(df["mutation_signal"] == mut_sig) & (df["population_model"] == pop_model)]
+
+            if subset.empty:
+                ax.set_visible(False)
+                continue
+
+            # grid times are the same for all rows; read from first row
+            row0 = subset.iloc[0]
+            time_cols = sorted([c for c in subset.columns if re.match(r"time_\d+$", c)],
+                               key=lambda c: int(c.split("_")[-1]))
+            times = row0[time_cols].values.astype(float)
+
+            # one line per tree replicate
+            for _, row in subset.iterrows():
+                median_cols = sorted([c for c in subset.columns if re.match(r"median_\d+$", c)],
+                                     key=lambda c: int(c.split("_")[-1]))
+                lower_cols  = sorted([c for c in subset.columns if c.startswith("hpd_lower_")],
+                                     key=lambda c: int(c.split("_")[-1]))
+                upper_cols  = sorted([c for c in subset.columns if c.startswith("hpd_upper_")],
+                                     key=lambda c: int(c.split("_")[-1]))
+
+                medians = row[median_cols].values.astype(float)
+                lowers  = row[lower_cols].values.astype(float)
+                uppers  = row[upper_cols].values.astype(float)
+
+                # append root height as the right boundary of the last interval
+                root_height = row["median_root_height"]
+                plot_times = np.append(times, root_height)
+                plot_medians = np.append(medians, medians[-1])
+                plot_lowers  = np.append(lowers,  lowers[-1])
+                plot_uppers  = np.append(uppers,  uppers[-1])
+
+                ax.step(plot_times, plot_medians, where="post", color=color_skygrid, alpha=0.6, linewidth=1)
+                ax.fill_between(plot_times, plot_lowers, plot_uppers, step="post", color=color_skygrid, alpha=0.1)
+
+            # true trajectory
+            t_max = x_range[1] if x_range else times[-1]
+            t_vals = np.linspace(0, t_max, 500)
+            if true_traj_fn and pop_model in true_traj_fn:
+                true_traj = true_traj_fn[pop_model]
+            else:
+                true_traj = get_true_traj(pop_model, assign_model_params(pop_model))
+            ax.plot(t_vals, [true_traj(t) for t in t_vals],
+                    color=color_true, linewidth=2, label="True", zorder=6)
+
+            ax.invert_xaxis()
+            if x_range:
+                ax.set_xlim(x_range[1], x_range[0])
+            if y_range:
+                ax.set_ylim(y_range)
+            if j == 0:
+                ax.set_ylabel(f"{mut_sig.capitalize()} mut. signal\nPopulation Size")
+            if i == 0:
+                ax.set_title(pop_model, fontsize=12)
+            if i == nrows - 1:
+                ax.set_xlabel("Time before present")
+
+    legend_handles = [
+        Line2D([0], [0], color=color_true,    linewidth=2,            label="True population size"),
+        Line2D([0], [0], color=color_skygrid, linewidth=1, alpha=0.6, label="Skygrid median (per tree)"),
+    ]
+    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.02), ncol=2)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.suptitle(f"{title} ({sampling})")
     plt.show()
@@ -1519,7 +1750,7 @@ def get_true_traj(pop_model, row):
         return lambda t: row["present_pop_size"] * np.exp(-row["growth_rate"] * t)
     elif pop_model == "expgrowthslow":
         return lambda t: row["present_pop_size"] * np.exp(-row["growth_rate"] * t)
-    elif pop_model == "bottleneck":
+    elif pop_model.startswith("bottleneck"):
         ps, bs, bstart, bend = row["present_pop_size"], row["bottleneck_size"], row["bottleneck_start"], row["bottleneck_end"]
         def bottleneck_traj(t):
             if t <= bstart:
@@ -2555,7 +2786,297 @@ def plot_bl_sim_vs_estimate_grid(
     plt.tight_layout()
     plt.show()
 
+def read_tree_flexible(tree_path, tree_index=0):
+    """
+    Read a tree from either:
+      - a newick .trees file (multiple trees) — picks tree_index (0-based)
+      - a nexus .tree or .nex file (single summary tree)
+    """
+    path = str(tree_path)
+    if path.endswith(".trees") and not path.endswith("_summary.tree"):
+        trees = list(Phylo.parse(path, "newick"))
+        return trees[tree_index]
+    else:
+        return Phylo.read(path, "nexus")
 
 
+def coalescent_intensity_by_node(tree_path, mode, params, tree_index=0):
+    """
+    Returns cumulative coalescent intensity until each internal node.
+
+    Time is measured backward:
+        t = 0 is the present
+        larger t is further in the past
+
+    Uses:
+        H = sum_i C(k_i, 2) * integral 1 / Ne(t) dt
+    """
+
+    tree = read_tree_flexible(tree_path, tree_index=tree_index)
+
+    # Assign node IDs in preorder to match get_branch_info naming
+    node_ids = {}
+    internal_counter = 0
+    for clade in tree.find_clades(order="preorder"):
+        if clade.name:
+            node_ids[id(clade)] = clade.name
+        else:
+            node_ids[id(clade)] = f"internal_{internal_counter}"
+            internal_counter += 1
+
+    # ------------------------------------------------------------
+    # 1. Convert branch lengths to backward times from present
+    # ------------------------------------------------------------
+    depths = tree.depths()
+    tips = tree.get_terminals()
+
+    max_tip_depth = max(depths[tip] for tip in tips)
+
+    node_time = {
+        node: max_tip_depth - depths[node]
+        for node in tree.find_clades()
+    }
+
+    # ------------------------------------------------------------
+    # 2. Define integral of 1 / Ne(t)
+    # ------------------------------------------------------------
+    def inv_Ne_integral(t0, t1):
+        if t1 <= t0:
+            return 0.0
+
+        if mode in {"true_uniform", "sim_constcoal"}:
+            Ne = params["Ne"]
+            return (t1 - t0) / Ne
+
+        if mode == "true_exp":
+            N0 = params["N0"]
+            rate = params["rate"]
+
+            # Backward-time exponential:
+            # N(t) = N0 * exp(-rate * t)
+            return (exp(rate * t1) - exp(rate * t0)) / (N0 * rate)
+
+        if mode == "true_bottleneck":
+            start = params["bottleneck_start"]
+            end = params["bottleneck_end"]
+
+            Ne_normal = params["Ne_normal"]
+            Ne_bottle = params["Ne_bottleneck"]
+
+            pieces = [
+                (0.0, start, Ne_normal),
+                (start, end, Ne_bottle),
+                (end, inf, Ne_normal),
+            ]
+
+            total = 0.0
+            for a, b, Ne in pieces:
+                left = max(t0, a)
+                right = min(t1, b)
+
+                if right > left:
+                    total += (right - left) / Ne
+
+            return total
+
+        if mode == "sim_skyline":
+            times = [0.0] + list(params["time_points"])
+            pop_sizes = params["population_sizes"]
+
+            if len(times) != len(pop_sizes) + 1:
+                raise ValueError(
+                    "For sim_skyline, len(time_points) must equal "
+                    "len(population_sizes) + 1."
+                )
+
+            total = 0.0
+
+            for a, b, Ne in zip(times[:-1], times[1:], pop_sizes):
+                left = max(t0, a)
+                right = min(t1, b)
+
+                if right > left:
+                    total += (right - left) / Ne
+
+            return total
+
+        raise ValueError(f"Unknown mode: {mode}")
+    
+    # ------------------------------------------------------------
+    # 3. Build sampling and coalescent events
+    # ------------------------------------------------------------
+
+    events = []
+
+    for tip in tips:
+        events.append((node_time[tip], "sample", tip))
+
+    internal_nodes = tree.get_nonterminals()
+
+    for node in internal_nodes:
+        events.append((node_time[node], "coal", node))
+
+    events.sort(key=lambda x: x[0])
+
+    # ------------------------------------------------------------
+    # 4. Sweep backward through time and accumulate H
+    # ------------------------------------------------------------
+
+    H = 0.0
+    k = 0
+    current_time = 0.0
+    result = {}
+    node_times_out = {}
+
+    i = 0
+
+    while i < len(events):
+        t = events[i][0]
+
+        if t > current_time and k >= 2:
+            H += comb(k, 2) * inv_Ne_integral(current_time, t)
+
+        same_time_events = []
+        while i < len(events) and events[i][0] == t:
+            same_time_events.append(events[i])
+            i += 1
+
+        for _, event_type, node in same_time_events:
+            if event_type == "coal":
+                node_name = node_ids[id(node)]
+                result[node_name] = H
+                node_times_out[node_name] = t
+
+        for _, event_type, node in same_time_events:
+            if event_type == "sample":
+                k += 1
+            elif event_type == "coal":
+                k -= max(len(node.clades) - 1, 1)
+
+        current_time = t
+
+    return result, node_times_out
+
+
+def compute_node_rates(node_times, mode, params):
+    """
+    Compute instantaneous coalescent rate 1/Ne(t) at given node times.
+
+    Parameters:
+        node_times: dict {node_name: t} — times at which to evaluate the rate
+        mode: same mode strings as coalescent_intensity_by_node
+        params: same params dict as coalescent_intensity_by_node
+
+    Returns:
+        dict {node_name: rate}
+    """
+    def rate_at(t):
+        if mode in {"true_uniform", "sim_constcoal"}:
+            return 1.0 / params["Ne"]
+        if mode == "true_exp":
+            return exp(params["rate"] * t) / params["N0"]
+        if mode == "true_bottleneck":
+            start, end = params["bottleneck_start"], params["bottleneck_end"]
+            Ne = params["Ne_bottleneck"] if start < t < end else params["Ne_normal"]
+            return 1.0 / Ne
+        if mode == "sim_skyline":
+            times = [0.0] + list(params["time_points"])
+            pop_sizes = params["population_sizes"]
+            for a, b, Ne in zip(times[:-1], times[1:], pop_sizes):
+                if a <= t < b:
+                    return 1.0 / Ne
+            return 1.0 / pop_sizes[-1]
+        raise ValueError(f"Unknown mode: {mode}")
+
+    return {node: rate_at(t) for node, t in node_times.items()}
+
+
+def coalescent_intensity_all_trees(trees_df):
+    """
+    For each replicate in overview_df_, compute coalescent intensity per internal
+    node for the true simulated tree, the constcoal BEAST summary tree, and the
+    skyline BEAST summary tree.
+
+    Returns a wide-format DataFrame with one row per internal node per replicate,
+    with columns:
+        node, tree_index, population_model, mutation_signal, sampling,
+        ci_true, ci_constcoal, ci_skyline
+    """
+    results = []
+
+    for _, row in trees_df.iterrows():
+        pop_model = row["population_model"]
+        params = assign_model_params(pop_model)
+
+        # params for the true trajectory
+        if pop_model in ("expgrowthfast", "expgrowthslow"):
+            ci_params_true = {"N0": params["present_pop_size"], "rate": params["growth_rate"]}
+            true_mode = "true_exp"
+        elif pop_model.startswith("bottleneck"):
+            ci_params_true = {
+                "Ne_normal":        params["present_pop_size"],
+                "Ne_bottleneck":    params["bottleneck_size"],
+                "bottleneck_start": params["bottleneck_start"],
+                "bottleneck_end":   params["bottleneck_end"],
+            }
+            true_mode = "true_bottleneck"
+        else:
+            ci_params_true = {"Ne": params["present_pop_size"]}
+            true_mode = "true_uniform"
+
+        skyline_params = {
+            "time_points":      row["skyline_times"],
+            "population_sizes": row["skyline_medians"],
+        }
+
+        meta = {
+            "tree_index":       row["tree_index"],
+            "population_model": pop_model,
+            "mutation_signal":  row["mutation_signal"],
+            "sampling":         row["sampling"],
+        }
+
+        constcoal_params = {"Ne": row["coalescent_median"]}
+
+        try:
+            ci_true,      true_node_times = coalescent_intensity_by_node(row["sim_tree_path"],       true_mode,       ci_params_true, tree_index=row["tree_index"])
+            ci_constcoal, _               = coalescent_intensity_by_node(row["tree_path_constcoal"], "sim_constcoal", constcoal_params)
+            ci_skyline,   _               = coalescent_intensity_by_node(row["tree_path_skyline"],   "sim_skyline",   skyline_params)
+        except Exception as e:
+            print(f"Warning: skipping T{row['tree_index']} {pop_model}: {e}")
+            continue
+
+        # compute all rates at true node times
+        rates_true      = compute_node_rates(true_node_times, true_mode,       ci_params_true)
+        rates_constcoal = compute_node_rates(true_node_times, "sim_constcoal", constcoal_params)
+        rates_skyline   = compute_node_rates(true_node_times, "sim_skyline",   skyline_params)
+
+        # one row per node per model, mirroring tree_metrics_combined structure
+        all_nodes = set(ci_true) | set(ci_constcoal) | set(ci_skyline)
+        for node in all_nodes:
+            for model, ci_est, rates_est in [
+                ("constcoal", ci_constcoal, rates_constcoal),
+                ("skyline",   ci_skyline,   rates_skyline),
+            ]:
+                results.append({
+                    **meta,
+                    "model":          model,
+                    "node":           node,
+                    "ci_true":        ci_true.get(node, None),
+                    "ci_estimated":   ci_est.get(node, None),
+                    "rate_true":      rates_true.get(node, None),
+                    "rate_estimated": rates_est.get(node, None),
+                })
+
+    df = pd.DataFrame(results)
+    df["ci_diff"]         = df["ci_estimated"] - df["ci_true"]
+    df["ci_rel_error"]    = df["ci_diff"] / df["ci_true"]
+    df["ci_abs_diff"]     = df["ci_diff"].abs()
+    df["ci_abs_rel_error"] = df["ci_rel_error"].abs()
+    df["rate_diff"]         = df["rate_estimated"] - df["rate_true"]
+    df["rate_rel_error"]    = df["rate_diff"] / df["rate_true"]
+    df["rate_abs_diff"]     = df["rate_diff"].abs()
+    df["rate_abs_rel_error"] = df["rate_rel_error"].abs()
+    return df
 
 

@@ -8,22 +8,26 @@
 # =============================================================================
 
 SAMPLING_TYPES = ["independenthomochronous", "linearconstant"]
-#POP_MODELS     = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
-POP_MODELS = ["bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50", "bottleneckmid100"]
+POP_MODELS     = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
+#POP_MODELS = ["bottleneck20", "bottleneck50", "bottleneck100", "bottleneck200", "bottlenecklate", "bottlenecklatesampling", "bottleneckmid50", "bottleneckmid100"]
 #NREPLICATES    = 100
 NREPLICATES = 10
 INFERENCE      = ["constcoal", "skyline"]
 MUTSIGS        = ["lowmutsig", "medmutsig", "highmutsig"]
+MUTSIG_LENGTHS = {"lowmutsig": 1000000, "medmutsig": 5000000, "highmutsig": 10000000}
 SEEDS          = [44, 45, 46]   # one BEAST run per seed, combined later
 
-#SIMDATA    = "results/run1/simulated_data"
-#BEAST_DIR  = "results/run1/beast_inference"
-#CONFIG_DIR = "results/run1/config"
+SIMDATA    = "results/run1/simulated_data"
+BEAST_DIR  = "results/run1/beast_inference"
+CONFIG_DIR = "results/run1/config"
 
-SIMDATA    = "results/run_bottleneck/simulated_data"
-BEAST_DIR  = "results/run_bottleneck/beast_inference"
-CONFIG_DIR = "results/run_bottleneck/config"
+#SIMDATA    = "results/run_bottleneck/simulated_data"
+#BEAST_DIR  = "results/run_bottleneck/beast_inference"
+#CONFIG_DIR = "results/run_bottleneck/config"
 SEQGEN     = workflow.basedir + "/../Seq-Gen-1.3.5/source/seq-gen"
+
+TEMPLATES_DIR   = "results/run1/templates"
+REMASTER_SEED   = 42
 
 def config_file(wildcards):
     return f"{CONFIG_DIR}/{wildcards.model}_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.mutsig}.cfg"
@@ -58,11 +62,19 @@ rule all:
         f"{BEAST_DIR}/successful_mcmc_runs.csv"
 
 
+rule all_trees:
+    input:
+        expand(
+            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS
+        )
+
+
 rule all_alignments:
     input:
         expand(
-            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
-            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, i=range(NREPLICATES)
+            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_{{mutsig}}_snps.fasta",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, i=range(NREPLICATES), mutsig=MUTSIGS
         ),
         f"{SIMDATA}/snp_summary.csv"
 
@@ -96,22 +108,41 @@ rule all_xmls:
 # =============================================================================
 rule simulate_trees:
     input:
-        script = "scripts/simulate_trees.R",
-        utils  = "scripts/SimUtils.R",
+        template = f"{TEMPLATES_DIR}/remaster_{{sampling}}_{{popmodel}}.xml",
     output:
-        f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees"
+        trees = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
+        traj  = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.traj",
     log:
         "logs/simulate_trees/{sampling}_{popmodel}.log"
+    params:
+        filebase    = SIMDATA,
+        nreplicates = NREPLICATES,
+        seed        = REMASTER_SEED,
     envmodules:
         "stack/2024-06",
         "gcc/12.2.0",
-        "r/4.4.0",
+        "openjdk/21.0.3_9",
+        "beast2/2.7.4",
     resources:
         mem_mb_per_cpu = 4000,
-        runtime = 60,
-        cpus_per_task = 4,
+        runtime = 20,
+        cpus_per_task = 1,
     shell:
-        "Rscript {input.script} {wildcards.popmodel} {wildcards.sampling} > {log} 2>&1"
+        """
+        mkdir -p $(dirname {output.trees})
+        TMPXML=$(mktemp --suffix=.xml)
+        sed 's|{{$nreplicates}}|{params.nreplicates}|g; s|{{$filebase}}|{params.filebase}|g' {input.template} > $TMPXML
+        beast -overwrite -seed {params.seed} $TMPXML > {log} 2>&1
+        rm $TMPXML
+        # Convert NEXUS to one plain newick per line (strip beast annotations, keep only tree lines)
+        NEXUS={output.trees}
+        TMPNWK=$(mktemp)
+        grep "^tree STATE_" "$NEXUS" \
+            | sed 's/^tree STATE_[0-9]* = //' \
+            | sed 's/\[&[^]]*\]//g' \
+            > "$TMPNWK"
+        mv "$TMPNWK" "$NEXUS"
+        """
 
 
 # =============================================================================
@@ -122,9 +153,11 @@ rule simulate_alignment:
     input:
         trees = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
     output:
-        snps = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
+        snps = temp(f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_{{mutsig}}_snps.fasta"),
+    params:
+        length = lambda wc: MUTSIG_LENGTHS[wc.mutsig]
     log:
-        "logs/simulate_alignment/{sampling}_{popmodel}_{i}.log"
+        "logs/simulate_alignment/{sampling}_{popmodel}_{i}_{mutsig}.log"
     resources:
         runtime = lambda wildcards: 60 if wildcards.sampling == "independenthomochronous" else 180,
         cpus_per_task = 1,
@@ -135,7 +168,7 @@ rule simulate_alignment:
         TMPNWK=$(mktemp --suffix=.nwk)
         TMPFASTA=$(mktemp --suffix=.fasta)
         echo -e "$TREE\n" > $TMPNWK
-        {SEQGEN} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l10000000 -s4.6e-8 -n1 \
+        {SEQGEN} -mHKY -t0.5 -f0.25,0.25,0.25,0.25 -l{params.length} -s4.6e-8 -n1 \
             < $TMPNWK > $TMPFASTA 2>> {log}
         rm $TMPNWK
         conda run -n snp_sites snp-sites -o {output.snps} $TMPFASTA >> {log} 2>&1
@@ -148,8 +181,8 @@ rule simulate_alignment:
 rule snp_summary:
     input:
         expand(
-            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_snps.fasta",
-            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, i=range(NREPLICATES)
+            f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}_{{i}}_{{mutsig}}_snps.fasta",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, i=range(NREPLICATES), mutsig=MUTSIGS
         )
     output:
         f"{SIMDATA}/snp_summary.csv"
@@ -184,7 +217,7 @@ rule snp_summary:
 rule make_beast_xml:
     input:
         snps   = expand(
-                     f"{SIMDATA}/{{{{sampling}}}}/{{{{popmodel}}}}/{{{{popmodel}}}}_{{i}}_snps.fasta",
+                     f"{SIMDATA}/{{{{sampling}}}}/{{{{popmodel}}}}/{{{{popmodel}}}}_{{i}}_{{{{mutsig}}}}_snps.fasta",
                      i=range(NREPLICATES)
                  ),
         trees  = f"{SIMDATA}/{{sampling}}/{{popmodel}}/{{popmodel}}.trees",
@@ -211,12 +244,10 @@ rule run_beast:
     input:
         xml = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.xml",
     output:
-        log   = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log",
-        trees = f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.trees",
+        log   = temp(f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.log"),
+        trees = temp(f"{BEAST_DIR}/{{model}}/{{sampling}}/{{popmodel}}/{{mutsig}}/seed{{seed}}/{{model}}_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.trees"),
     log:
         "logs/run_beast/{model}_{sampling}_{popmodel}_{mutsig}_T{i}_seed{seed}.log"
-    benchmark:
-        "benchmarks/run_beast/{model}_{sampling}_{popmodel}_{mutsig}_T{i}_seed{seed}.tsv"
     envmodules:
         "stack/2024-06",
         "openjdk/21.0.3_9",
@@ -225,15 +256,34 @@ rule run_beast:
         "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 1000,
-        runtime = lambda wildcards, attempt: (240 if wildcards.model == "constcoal" else 960),# * (2 if wildcards.mutsig == "highmutsig" else 1),
+        runtime = lambda wildcards, attempt: (240 if wildcards.model == "constcoal" else 960),
         cpus_per_task = 2,
         slurm_jobname = lambda wildcards: f"{wildcards.model}_{wildcards.sampling}_{wildcards.popmodel}_{wildcards.mutsig}_T{wildcards.i}_s{wildcards.seed}",
     shell:
-        """
-        mkdir -p $(dirname {output.log})
-        cd $(dirname {output.log}) && beast -overwrite -seed {wildcards.seed} $OLDPWD/{input.xml} > $OLDPWD/{log} 2>&1
-        """
+        r"""
+        set +e
 
+        mkdir -p $(dirname {output.log})
+
+        cd $(dirname {output.log}) && beast -overwrite -seed {wildcards.seed} $OLDPWD/{input.xml} > $OLDPWD/{log} 2>&1
+
+        exitcode=$?
+
+        cd $OLDPWD
+
+        if [ "$exitcode" -eq 0 ]; then
+            exit 0
+        fi
+
+        # If BEAST was killed by timeout but produced usable output, accept the partial run.
+        if [ -s "{output.log}" ] && [ -s "{output.trees}" ]; then
+            echo "BEAST exited with code $exitcode, but partial outputs exist. Accepting run." >> {log}
+            exit 0
+        fi
+
+        echo "BEAST failed with code $exitcode and required outputs are missing or empty." >> {log}
+        exit "$exitcode"
+        """
 
 # =============================================================================
 # Step 5: Combine BEAST runs with logcombiner
