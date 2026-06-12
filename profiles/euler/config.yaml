@@ -9,7 +9,6 @@ default-resources:
 
 jobs: 800
 latency-wait: 30
-rerun-incomplete: true
 
 slurm-logdir: logs
 use-envmodules: true
