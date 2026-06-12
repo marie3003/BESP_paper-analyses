@@ -444,9 +444,9 @@ rule subsample_runs:
         else
             subsample_one() {{
                 local inlog=$1 intrees=$2 outlog=$3 outtrees=$4
-                STATE1=$(grep -v "^#\|^Sample\|^State" "$inlog" | awk 'NR==1{{print $1}}')
-                STATE2=$(grep -v "^#\|^Sample\|^State" "$inlog" | awk 'NR==2{{print $1}}')
-                N_SAMPLES=$(grep -vc "^#\|^Sample\|^State" "$inlog" || true)
+                STATE1=$(grep -Ev "^(#|Sample|State)" "$inlog" | awk 'NR==1{{print $1}}')
+                STATE2=$(grep -Ev "^(#|Sample|State)" "$inlog" | awk 'NR==2{{print $1}}')
+                N_SAMPLES=$(grep -Evc "^(#|Sample|State)" "$inlog" || true)
                 LOG_FREQ=$(( STATE2 - STATE1 ))
                 RESAMPLE=$(( (N_SAMPLES * LOG_FREQ) / 1000 ))
                 if [ "$RESAMPLE" -lt "$LOG_FREQ" ]; then RESAMPLE=$LOG_FREQ; fi
