@@ -508,24 +508,23 @@ def tree_metrics_all_trees(path_df):
     Returns a long-format DataFrame with one row per node per replicate per model,
     with columns for errors, CIs, model metadata (model, growth_model, mutsig, sampling).
     """
-    sim_tree_cache = {}
     results = []
-    for _, row in path_df.iterrows():
-        tree_constcoal = Phylo.read(row["tree_path_constcoal"], "nexus")
-        tree_skyline = Phylo.read(row["tree_path_skyline"], "nexus")
-        if row["sim_tree_path"] not in sim_tree_cache:
-            sim_tree_cache[row["sim_tree_path"]] = list(Phylo.parse(row["sim_tree_path"], "newick"))
-        tree_sim = sim_tree_cache[row["sim_tree_path"]][row["tree_index"]]
+    for sim_tree_path, group in path_df.groupby("sim_tree_path"):
+        sim_trees = list(Phylo.parse(sim_tree_path, "newick"))
+        for _, row in group.iterrows():
+            tree_sim      = sim_trees[row["tree_index"]]
+            tree_constcoal = Phylo.read(row["tree_path_constcoal"], "nexus")
+            tree_skyline   = Phylo.read(row["tree_path_skyline"], "nexus")
 
-        eval_df_constcoal = compare_tree_metrics(tree_sim, tree_constcoal)
-        eval_df_skyline = compare_tree_metrics(tree_sim, tree_skyline)
+            eval_df_constcoal = compare_tree_metrics(tree_sim, tree_constcoal)
+            eval_df_skyline   = compare_tree_metrics(tree_sim, tree_skyline)
 
-        eval_df_constcoal["tree_name"] = Path(row["tree_path_constcoal"]).stem
-        eval_df_skyline["tree_name"] = Path(row["tree_path_skyline"]).stem
-        eval_df_constcoal["tree_index"] = row["tree_index"]
-        eval_df_skyline["tree_index"] = row["tree_index"]
-        results.append(eval_df_constcoal)
-        results.append(eval_df_skyline)
+            eval_df_constcoal["tree_name"]  = Path(row["tree_path_constcoal"]).stem
+            eval_df_skyline["tree_name"]    = Path(row["tree_path_skyline"]).stem
+            eval_df_constcoal["tree_index"] = row["tree_index"]
+            eval_df_skyline["tree_index"]   = row["tree_index"]
+            results.append(eval_df_constcoal)
+            results.append(eval_df_skyline)
 
     # Save combined output
     combined_df = pd.concat(results, ignore_index=True)
@@ -637,7 +636,6 @@ def extract_tree_info(row, num_groups=10, burnin=0):
 
     # Extract population size estimates
     skyline_times = get_skyline_group_boundaries(tree, num_groups=num_groups)
-    root_height = skyline_times[-1]
     skyline_medians, skyline_lowers, skyline_uppers, skyline_samples_df  = get_median_population_size(row["log_path_skyline"], burnin=burnin, mode="skyline")
     coalescent_median, coalescent_lower, coalescent_upper, coalescent_samples = get_median_population_size(row["log_path_constcoal"], burnin=burnin, mode="constcoal")
 
@@ -652,7 +650,6 @@ def extract_tree_info(row, num_groups=10, burnin=0):
             "skyline_cumulative_lowers": skyline_cumulative_lowers,
             "skyline_cumulative_uppers": skyline_cumulative_uppers,
             "coalescent_median": coalescent_median,
-            "root_height": root_height,
             "skyline_lowers": skyline_lowers,
             "skyline_uppers": skyline_uppers,
             "coalescent_lower": coalescent_lower,
@@ -2800,207 +2797,24 @@ def read_tree_flexible(tree_path, tree_index=0):
         return Phylo.read(path, "nexus")
 
 
-def coalescent_intensity_by_node(tree_path, mode, params, tree_index=0):
-    """
-    Returns cumulative coalescent intensity until each internal node.
-
-    Time is measured backward:
-        t = 0 is the present
-        larger t is further in the past
-
-    Uses:
-        H = sum_i C(k_i, 2) * integral 1 / Ne(t) dt
-    """
-
-    tree = read_tree_flexible(tree_path, tree_index=tree_index)
-
-    # Assign node IDs in preorder to match get_branch_info naming
-    node_ids = {}
-    internal_counter = 0
-    for clade in tree.find_clades(order="preorder"):
-        if clade.name:
-            node_ids[id(clade)] = clade.name
-        else:
-            node_ids[id(clade)] = f"internal_{internal_counter}"
-            internal_counter += 1
-
-    # ------------------------------------------------------------
-    # 1. Convert branch lengths to backward times from present
-    # ------------------------------------------------------------
-    depths = tree.depths()
-    tips = tree.get_terminals()
-
-    max_tip_depth = max(depths[tip] for tip in tips)
-
-    node_time = {
-        node: max_tip_depth - depths[node]
-        for node in tree.find_clades()
-    }
-
-    # ------------------------------------------------------------
-    # 2. Define integral of 1 / Ne(t)
-    # ------------------------------------------------------------
-    def inv_Ne_integral(t0, t1):
-        if t1 <= t0:
-            return 0.0
-
-        if mode in {"true_uniform", "sim_constcoal"}:
-            Ne = params["Ne"]
-            return (t1 - t0) / Ne
-
-        if mode == "true_exp":
-            N0 = params["N0"]
-            rate = params["rate"]
-
-            # Backward-time exponential:
-            # N(t) = N0 * exp(-rate * t)
-            return (exp(rate * t1) - exp(rate * t0)) / (N0 * rate)
-
-        if mode == "true_bottleneck":
-            start = params["bottleneck_start"]
-            end = params["bottleneck_end"]
-
-            Ne_normal = params["Ne_normal"]
-            Ne_bottle = params["Ne_bottleneck"]
-
-            pieces = [
-                (0.0, start, Ne_normal),
-                (start, end, Ne_bottle),
-                (end, inf, Ne_normal),
-            ]
-
-            total = 0.0
-            for a, b, Ne in pieces:
-                left = max(t0, a)
-                right = min(t1, b)
-
-                if right > left:
-                    total += (right - left) / Ne
-
-            return total
-
-        if mode == "sim_skyline":
-            times = [0.0] + list(params["time_points"])
-            pop_sizes = params["population_sizes"]
-
-            if len(times) != len(pop_sizes) + 1:
-                raise ValueError(
-                    "For sim_skyline, len(time_points) must equal "
-                    "len(population_sizes) + 1."
-                )
-
-            total = 0.0
-
-            for a, b, Ne in zip(times[:-1], times[1:], pop_sizes):
-                left = max(t0, a)
-                right = min(t1, b)
-
-                if right > left:
-                    total += (right - left) / Ne
-
-            return total
-
-        raise ValueError(f"Unknown mode: {mode}")
-    
-    # ------------------------------------------------------------
-    # 3. Build sampling and coalescent events
-    # ------------------------------------------------------------
-
-    events = []
-
-    for tip in tips:
-        events.append((node_time[tip], "sample", tip))
-
-    internal_nodes = tree.get_nonterminals()
-
-    for node in internal_nodes:
-        events.append((node_time[node], "coal", node))
-
-    events.sort(key=lambda x: x[0])
-
-    # ------------------------------------------------------------
-    # 4. Sweep backward through time and accumulate H
-    # ------------------------------------------------------------
-
-    H = 0.0
-    k = 0
-    current_time = 0.0
-    result = {}
-    node_times_out = {}
-
-    i = 0
-
-    while i < len(events):
-        t = events[i][0]
-
-        if t > current_time and k >= 2:
-            H += comb(k, 2) * inv_Ne_integral(current_time, t)
-
-        same_time_events = []
-        while i < len(events) and events[i][0] == t:
-            same_time_events.append(events[i])
-            i += 1
-
-        for _, event_type, node in same_time_events:
-            if event_type == "coal":
-                node_name = node_ids[id(node)]
-                result[node_name] = H
-                node_times_out[node_name] = t
-
-        for _, event_type, node in same_time_events:
-            if event_type == "sample":
-                k += 1
-            elif event_type == "coal":
-                k -= max(len(node.clades) - 1, 1)
-
-        current_time = t
-
-    return result, node_times_out
-
-
-def compute_node_rates(node_times, mode, params):
-    """
-    Compute instantaneous coalescent rate 1/Ne(t) at given node times.
-
-    Parameters:
-        node_times: dict {node_name: t} — times at which to evaluate the rate
-        mode: same mode strings as coalescent_intensity_by_node
-        params: same params dict as coalescent_intensity_by_node
-
-    Returns:
-        dict {node_name: rate}
-    """
-    def rate_at(t):
-        if mode in {"true_uniform", "sim_constcoal"}:
-            return 1.0 / params["Ne"]
-        if mode == "true_exp":
-            return exp(params["rate"] * t) / params["N0"]
-        if mode == "true_bottleneck":
-            start, end = params["bottleneck_start"], params["bottleneck_end"]
-            Ne = params["Ne_bottleneck"] if start < t < end else params["Ne_normal"]
-            return 1.0 / Ne
-        if mode == "sim_skyline":
-            times = [0.0] + list(params["time_points"])
-            pop_sizes = params["population_sizes"]
-            for a, b, Ne in zip(times[:-1], times[1:], pop_sizes):
-                if a <= t < b:
-                    return 1.0 / Ne
-            return 1.0 / pop_sizes[-1]
-        raise ValueError(f"Unknown mode: {mode}")
-
-    return {node: rate_at(t) for node, t in node_times.items()}
 
 
 def coalescent_intensity_all_trees(trees_df):
     """
-    For each replicate in overview_df_, compute coalescent intensity per internal
-    node for the true simulated tree, the constcoal BEAST summary tree, and the
-    skyline BEAST summary tree.
+    For each replicate, compute cumulative coalescent intensity at each internal
+    node of the TRUE simulated tree, evaluated under three Ne functions:
+        - true trajectory
+        - constcoal constant Ne (BEAST estimate)
+        - skyline step-function Ne (BEAST estimate)
 
-    Returns a wide-format DataFrame with one row per internal node per replicate,
-    with columns:
-        node, tree_index, population_model, mutation_signal, sampling,
-        ci_true, ci_constcoal, ci_skyline
+    All three are integrated along the simulated tree's branch lengths and
+    evaluated at the simulated tree's node times. This ensures a fair comparison:
+    the only difference is the Ne function, not the tree topology or node times.
+
+    For the skyline, the step function uses BEAST-estimated skyline_times and
+    skyline_medians but is integrated up to the true node time (which may be
+    shorter or longer than the BEAST tree's root height). Beyond the last skyline
+    boundary, the last Ne value is used.
     """
     results = []
 
@@ -3008,26 +2822,25 @@ def coalescent_intensity_all_trees(trees_df):
         pop_model = row["population_model"]
         params = assign_model_params(pop_model)
 
-        # params for the true trajectory
+        # --- true trajectory integral function ---
         if pop_model in ("expgrowthfast", "expgrowthslow"):
-            ci_params_true = {"N0": params["present_pop_size"], "rate": params["growth_rate"]}
             true_mode = "true_exp"
+            ci_params_true = {"N0": params["present_pop_size"], "rate": params["growth_rate"]}
         elif pop_model.startswith("bottleneck"):
+            true_mode = "true_bottleneck"
             ci_params_true = {
                 "Ne_normal":        params["present_pop_size"],
                 "Ne_bottleneck":    params["bottleneck_size"],
                 "bottleneck_start": params["bottleneck_start"],
                 "bottleneck_end":   params["bottleneck_end"],
             }
-            true_mode = "true_bottleneck"
         else:
-            ci_params_true = {"Ne": params["present_pop_size"]}
             true_mode = "true_uniform"
+            ci_params_true = {"Ne": params["present_pop_size"]}
 
-        skyline_params = {
-            "time_points":      row["skyline_times"],
-            "population_sizes": row["skyline_medians"],
-        }
+        constcoal_Ne     = row["coalescent_median"]
+        skyline_boundaries = [0.0] + list(row["skyline_times"])
+        skyline_pop_sizes  = list(row["skyline_medians"])
 
         meta = {
             "tree_index":       row["tree_index"],
@@ -3036,24 +2849,132 @@ def coalescent_intensity_all_trees(trees_df):
             "sampling":         row["sampling"],
         }
 
-        constcoal_params = {"Ne": row["coalescent_median"]}
+        # --- inline rate helpers (instantaneous 1/Ne at time t) ---
+        def _rate_true(t):
+            if true_mode == "true_uniform":
+                return 1.0 / ci_params_true["Ne"]
+            if true_mode == "true_exp":
+                return exp(ci_params_true["rate"] * t) / ci_params_true["N0"]
+            if true_mode == "true_bottleneck":
+                bs, be = ci_params_true["bottleneck_start"], ci_params_true["bottleneck_end"]
+                Ne = ci_params_true["Ne_bottleneck"] if bs < t < be else ci_params_true["Ne_normal"]
+                return 1.0 / Ne
+
+        def _rate_skyline(t):
+            for a, b, Ne in zip(skyline_boundaries[:-1], skyline_boundaries[1:], skyline_pop_sizes):
+                if a <= t < b:
+                    return 1.0 / Ne
+            return 1.0 / skyline_pop_sizes[-1]
+
+        # --- inline integral helpers ---
+        def _integral_true(t0, t1):
+            if t1 <= t0:
+                return 0.0
+            if true_mode == "true_uniform":
+                return (t1 - t0) / ci_params_true["Ne"]
+            if true_mode == "true_exp":
+                N0, rate = ci_params_true["N0"], ci_params_true["rate"]
+                return (exp(rate * t1) - exp(rate * t0)) / (N0 * rate)
+            if true_mode == "true_bottleneck":
+                bs, be = ci_params_true["bottleneck_start"], ci_params_true["bottleneck_end"]
+                Ne_n, Ne_b = ci_params_true["Ne_normal"], ci_params_true["Ne_bottleneck"]
+                total = 0.0
+                for a, b, Ne in [(0.0, bs, Ne_n), (bs, be, Ne_b), (be, inf, Ne_n)]:
+                    left, right = max(t0, a), min(t1, b)
+                    if right > left:
+                        total += (right - left) / Ne
+                return total
+
+        def _integral_constcoal(t0, t1):
+            return (t1 - t0) / constcoal_Ne if t1 > t0 else 0.0
+
+        def _integral_skyline(t0, t1):
+            if t1 <= t0:
+                return 0.0
+            total = 0.0
+            for a, b, Ne in zip(skyline_boundaries[:-1], skyline_boundaries[1:], skyline_pop_sizes):
+                left, right = max(t0, a), min(t1, b)
+                if right > left:
+                    total += (right - left) / Ne
+            # beyond last boundary: use last Ne value
+            if t1 > skyline_boundaries[-1]:
+                left = max(t0, skyline_boundaries[-1])
+                total += (t1 - left) / skyline_pop_sizes[-1]
+            return total
 
         try:
-            ci_true,      true_node_times = coalescent_intensity_by_node(row["sim_tree_path"],       true_mode,       ci_params_true, tree_index=row["tree_index"])
-            ci_constcoal, _               = coalescent_intensity_by_node(row["tree_path_constcoal"], "sim_constcoal", constcoal_params)
-            ci_skyline,   _               = coalescent_intensity_by_node(row["tree_path_skyline"],   "sim_skyline",   skyline_params)
+            tree = read_tree_flexible(row["sim_tree_path"], tree_index=row["tree_index"])
         except Exception as e:
             print(f"Warning: skipping T{row['tree_index']} {pop_model}: {e}")
             continue
 
-        # compute all rates at true node times
-        rates_true      = compute_node_rates(true_node_times, true_mode,       ci_params_true)
-        rates_constcoal = compute_node_rates(true_node_times, "sim_constcoal", constcoal_params)
-        rates_skyline   = compute_node_rates(true_node_times, "sim_skyline",   skyline_params)
+        # assign node IDs by preorder
+        node_ids = {}
+        internal_counter = 0
+        for clade in tree.find_clades(order="preorder"):
+            if clade.name:
+                node_ids[id(clade)] = clade.name
+            else:
+                node_ids[id(clade)] = f"internal_{internal_counter}"
+                internal_counter += 1
 
-        # one row per node per model, mirroring tree_metrics_combined structure
-        all_nodes = set(ci_true) | set(ci_constcoal) | set(ci_skyline)
-        for node in all_nodes:
+        depths      = tree.depths()
+        tips        = tree.get_terminals()
+        max_tip_depth = max(depths[tip] for tip in tips)
+        node_time   = {node: max_tip_depth - depths[node] for node in tree.find_clades()}
+
+        # build event list from simulated tree only
+        events = [(node_time[tip], "sample", tip) for tip in tips]
+        events += [(node_time[n], "coal", n) for n in tree.get_nonterminals()]
+        events.sort(key=lambda x: x[0])
+
+        # single sweep: accumulate H and record rates for all three Ne functions
+        H_true = H_constcoal = H_skyline = 0.0
+        k = 0
+        current_time = 0.0
+        ci_true = {}
+        ci_constcoal = {}
+        ci_skyline = {}
+        rates_true = {}
+        rates_constcoal = {}
+        rates_skyline = {}
+        node_times_out = {}
+
+        i = 0
+        while i < len(events):
+            t = events[i][0]
+
+            if t > current_time and k >= 2:
+                coef = comb(k, 2)
+                H_true      += coef * _integral_true(current_time, t)
+                H_constcoal += coef * _integral_constcoal(current_time, t)
+                H_skyline   += coef * _integral_skyline(current_time, t)
+
+            same_time_events = []
+            while i < len(events) and events[i][0] == t:
+                same_time_events.append(events[i])
+                i += 1
+
+            for _, event_type, node in same_time_events:
+                if event_type == "coal":
+                    node_name = node_ids[id(node)]
+                    ci_true[node_name]         = H_true
+                    ci_constcoal[node_name]    = H_constcoal
+                    ci_skyline[node_name]      = H_skyline
+                    rates_true[node_name]      = _rate_true(t)
+                    rates_constcoal[node_name] = 1.0 / constcoal_Ne
+                    rates_skyline[node_name]   = _rate_skyline(t)
+                    node_times_out[node_name]  = t
+
+            for _, event_type, node in same_time_events:
+                if event_type == "sample":
+                    k += 1
+                elif event_type == "coal":
+                    k -= max(len(node.clades) - 1, 1)
+
+            current_time = t
+
+        for node in ci_true:
             for model, ci_est, rates_est in [
                 ("constcoal", ci_constcoal, rates_constcoal),
                 ("skyline",   ci_skyline,   rates_skyline),
@@ -3062,10 +2983,11 @@ def coalescent_intensity_all_trees(trees_df):
                     **meta,
                     "model":          model,
                     "node":           node,
-                    "ci_true":        ci_true.get(node, None),
-                    "ci_estimated":   ci_est.get(node, None),
-                    "rate_true":      rates_true.get(node, None),
-                    "rate_estimated": rates_est.get(node, None),
+                    "node_time":      node_times_out[node],
+                    "ci_true":        ci_true[node],
+                    "ci_estimated":   ci_est[node],
+                    "rate_true":      rates_true[node],
+                    "rate_estimated": rates_est[node],
                 })
 
     df = pd.DataFrame(results)

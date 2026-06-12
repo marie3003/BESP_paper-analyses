@@ -58,7 +58,11 @@ def get_burnin(wildcards):
 # =============================================================================
 rule all:
     input:
-        f"{BEAST_DIR}/successful_mcmc_runs.csv"
+        expand(
+            f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.subsampled.log",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, i=range(NREPLICATES)
+        ),
+        f"{BEAST_DIR.replace('beast_inference', 'evaluation')}/successful_counts.tsv"
 
 
 rule all_trees:
@@ -252,17 +256,27 @@ rule run_beast:
 
         mkdir -p $(dirname {output.log})
 
-        cd $(dirname {output.log}) && beast -overwrite -seed {wildcards.seed} $OLDPWD/{input.xml} > $OLDPWD/{log} 2>&1
+        # Internal timeout must be smaller than SLURM runtime.
+        if [ "{wildcards.model}" = "constcoal" ]; then
+            internal_timeout="238m"
+        else
+            internal_timeout="958m"
+        fi
+
+        cd $(dirname {output.log})
+
+        timeout --preserve-status "$internal_timeout" \
+            beast -overwrite -seed {wildcards.seed} "$OLDPWD/{input.xml}" \
+            > "$OLDPWD/{log}" 2>&1
 
         exitcode=$?
 
-        cd $OLDPWD
+        cd "$OLDPWD"
 
         if [ "$exitcode" -eq 0 ]; then
             exit 0
         fi
 
-        # If BEAST was killed by timeout but produced usable output, accept the partial run.
         if [ -s "{output.log}" ] && [ -s "{output.trees}" ]; then
             echo "BEAST exited with code $exitcode, but partial outputs exist. Accepting run." >> {log}
             exit 0
@@ -367,3 +381,80 @@ rule build_csv:
         with open(output.csv, "w") as out:
             out.write("trees_path\n")
             out.write("\n".join(rows) + "\n")
+
+
+# =============================================================================
+# Step 8: Process results into per-scenario DataFrames
+# =============================================================================
+rule process_results:
+    input:
+        csv = f"{BEAST_DIR}/successful_mcmc_runs.csv",
+    output:
+        summary = f"{BEAST_DIR.replace('beast_inference', 'evaluation')}/successful_counts.tsv",
+    log:
+        "logs/process_results/process_results.log"
+    resources:
+        mem_mb_per_cpu = 4000,
+        runtime = 10,
+        cpus_per_task = 1,
+    shell:
+        """
+        python scripts/process_results.py \
+            --beast_dir {BEAST_DIR} \
+            > {log} 2>&1
+        """
+
+
+# =============================================================================
+# Step 9: Subsample combined log and trees to ~1000 samples with logcombiner
+# Only runs for runs that passed ESS (non-empty summary tree); otherwise
+# touches empty output files so Snakemake considers the rule satisfied.
+# =============================================================================
+rule subsample_runs:
+    input:
+        log_constcoal     = f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.log",
+        trees_constcoal   = f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.trees",
+        summary_constcoal = f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined_summary.tree",
+        log_skyline       = f"{BEAST_DIR}/skyline/{{sampling}}/{{popmodel}}/{{mutsig}}/skyline_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.log",
+        trees_skyline     = f"{BEAST_DIR}/skyline/{{sampling}}/{{popmodel}}/{{mutsig}}/skyline_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.trees",
+        summary_skyline   = f"{BEAST_DIR}/skyline/{{sampling}}/{{popmodel}}/{{mutsig}}/skyline_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined_summary.tree",
+        counts            = f"{BEAST_DIR.replace('beast_inference', 'evaluation')}/successful_counts.tsv",
+    output:
+        log_constcoal   = f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.subsampled.log",
+        trees_constcoal = f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.subsampled.trees",
+        log_skyline     = f"{BEAST_DIR}/skyline/{{sampling}}/{{popmodel}}/{{mutsig}}/skyline_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.subsampled.log",
+        trees_skyline   = f"{BEAST_DIR}/skyline/{{sampling}}/{{popmodel}}/{{mutsig}}/skyline_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.subsampled.trees",
+    log:
+        "logs/subsample_runs/{sampling}_{popmodel}_{mutsig}_T{i}.log"
+    envmodules:
+        "stack/2024-06",
+        "openjdk/21.0.3_9",
+        "gcc/12.2.0",
+        "beast1/1.10.4",
+        "libbeagle/3.1.2",
+    resources:
+        mem_mb_per_cpu = 2000,
+        runtime = 30,
+        cpus_per_task = 1,
+    shell:
+        """
+        if [ ! -s "{input.summary_constcoal}" ] || [ ! -s "{input.summary_skyline}" ]; then
+            echo "ESS check failed for one or both models; skipping subsampling." >> {log}
+            touch {output.log_constcoal} {output.trees_constcoal} {output.log_skyline} {output.trees_skyline}
+        else
+            subsample_one() {{
+                local inlog=$1 intrees=$2 outlog=$3 outtrees=$4
+                STATE1=$(grep -v "^#\|^Sample\|^State" "$inlog" | awk 'NR==1{{print $1}}')
+                STATE2=$(grep -v "^#\|^Sample\|^State" "$inlog" | awk 'NR==2{{print $1}}')
+                N_SAMPLES=$(grep -vc "^#\|^Sample\|^State" "$inlog" || true)
+                LOG_FREQ=$(( STATE2 - STATE1 ))
+                RESAMPLE=$(( (N_SAMPLES * LOG_FREQ) / 1000 ))
+                if [ "$RESAMPLE" -lt "$LOG_FREQ" ]; then RESAMPLE=$LOG_FREQ; fi
+                echo "$(basename $inlog): N_SAMPLES=$N_SAMPLES LOG_FREQ=$LOG_FREQ RESAMPLE=$RESAMPLE" >> {log}
+                logcombiner -burnin 0 -resample $RESAMPLE "$inlog"   "$outlog"   >> {log} 2>&1
+                logcombiner -trees -burnin 0 -resample $RESAMPLE "$intrees" "$outtrees" >> {log} 2>&1
+            }}
+            subsample_one {input.log_constcoal} {input.trees_constcoal} {output.log_constcoal} {output.trees_constcoal}
+            subsample_one {input.log_skyline}   {input.trees_skyline}   {output.log_skyline}   {output.trees_skyline}
+        fi
+        """
