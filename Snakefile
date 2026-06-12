@@ -115,7 +115,7 @@ rule simulate_trees:
         runtime = 20,
         cpus_per_task = 1,
     shell:
-        """
+        r"""
         mkdir -p $(dirname {output.trees})
         TMPXML=$(mktemp --suffix=.xml)
         sed 's|{{$nreplicates}}|{params.nreplicates}|g; s|{{$filebase}}|{params.filebase}|g' {input.template} > $TMPXML
