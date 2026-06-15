@@ -19,8 +19,8 @@ POP_MODELS=("expgrowthfast" "expgrowthslow" "uniform" "bottleneck"
 
 SAMPLING="${SAMPLING_TYPES[$SLURM_ARRAY_TASK_ID]}"
 POPMODEL="${POP_MODELS[$SLURM_ARRAY_TASK_ID]}"
-NREPLICATES=10
-FILEBASE="results/run1/simulated_data"
+NREPLICATES=1
+FILEBASE="results/run1/simulated_data_test"
 SEED=42
 
 TEMPLATE="results/run1/templates/remaster_${SAMPLING}_${POPMODEL}.xml"
