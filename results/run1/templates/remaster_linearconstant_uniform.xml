@@ -12,7 +12,6 @@
           changeTimes="100">
           0 -> pop
         </reaction>
-        <reaction spec="PunctualReaction" n="{$nsamples}" times="0">0 -> pop</reaction>
       </trajectory>
     </simulate>
 
