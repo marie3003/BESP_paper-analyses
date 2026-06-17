@@ -449,7 +449,7 @@ rule subsample_runs:
                 STATE2=$(grep -Ev "^(#|Sample|State)" "$inlog" | awk 'NR==2{{print $1}}')
                 N_SAMPLES=$(grep -Evc "^(#|Sample|State)" "$inlog" || true)
                 LOG_FREQ=$(( STATE2 - STATE1 ))
-                RESAMPLE=$(( (N_SAMPLES * LOG_FREQ) / 1000 ))
+                RESAMPLE=$(( ((N_SAMPLES * LOG_FREQ) / 1000 / LOG_FREQ) * LOG_FREQ ))
                 if [ "$RESAMPLE" -lt "$LOG_FREQ" ]; then RESAMPLE=$LOG_FREQ; fi
                 echo "$(basename $inlog): N_SAMPLES=$N_SAMPLES LOG_FREQ=$LOG_FREQ RESAMPLE=$RESAMPLE" >> {log}
                 logcombiner -burnin 0 -resample $RESAMPLE "$inlog"   "$outlog"   >> {log} 2>&1
