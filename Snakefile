@@ -436,7 +436,7 @@ rule subsample_runs:
         "libbeagle/3.1.2",
     resources:
         mem_mb_per_cpu = 2000,
-        runtime = 30,
+        runtime = 120,
         cpus_per_task = 1,
     shell:
         """
