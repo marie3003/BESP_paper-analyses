@@ -442,6 +442,7 @@ rule subsample_runs:
             echo "ESS check failed for one or both models; skipping subsampling." >> {log}
             touch {output.log_constcoal} {output.trees_constcoal} {output.log_skyline} {output.trees_skyline}
         else
+            set +u
             subsample_one() {{
                 local inlog=$1 intrees=$2 outlog=$3 outtrees=$4
                 STATE1=$(grep -Ev "^(#|Sample|State)" "$inlog" | awk 'NR==1{{print $1}}')
