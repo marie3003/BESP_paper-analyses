@@ -282,17 +282,22 @@ def main():
         sim_dict, events = traverse_tree(Phylo.read(StringIO(lines[tree_index]), "newick"))
         true_traj = get_true_traj(pop_model, rep_row)
         ci_true   = coalescent_intensity(
-            events, lambda t0, t1: integral_true(t0, t1, pop_model, rep_row)
+            events, lambda t0, t1, pm=pop_model, r=rep_row: integral_true(t0, t1, pm, r)
         )
 
-        # Load subsampled files
+        # Load subsampled files — skip replicate if either model's files are empty (ESS failed)
         model_data = {}
+        skip = False
         for model in ("constcoal", "skyline"):
             tp = rep_row[f"trees_path_{model}"].replace(".combined.trees", ".subsampled.trees")
             lp = rep_row[f"log_path_{model}"].replace(".combined.log",     ".subsampled.log")
-            log    = load_log(lp)
-            trees  = list(Phylo.parse(tp, "nexus"))
+            if not Path(tp).exists() or Path(tp).stat().st_size == 0:
+                skip = True; break
+            log   = load_log(lp)
+            trees = list(Phylo.parse(tp, "nexus"))
             model_data[model] = {"log": log, "trees": trees, "n": min(len(trees), len(log))}
+        if skip:
+            continue
 
         # Accumulators: model -> node_idx -> metric -> [values]
         acc = {m: {n: {met: [] for met in METRICS} for n in range(len(sim_dict))}
@@ -306,7 +311,7 @@ def main():
                 if model == "skyline":
                     sky_b  = skyline_boundaries_from_preorder(post_dict, args.num_groups)
                     sky_Ne = skyline_pop_sizes(log_row, args.num_groups)
-                    int_fn = lambda t0, t1: integral_skyline(t0, t1, [0.0] + sky_b, sky_Ne)
+                    int_fn = lambda t0, t1, b=sky_b, ne=sky_Ne: integral_skyline(t0, t1, [0.0] + b, ne)
                 else:
                     Ne_c   = float(log_row["constant.popSize"])
                     int_fn = lambda t0, t1, Ne=Ne_c: integral_constcoal(t0, t1, Ne)
