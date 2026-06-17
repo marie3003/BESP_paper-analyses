@@ -269,7 +269,7 @@ def main():
 
     row0        = scenario_df.iloc[0]
     pop_model   = row0["population_model"]
-    scenario    = f"{row0['sampling']}_{pop_model}_{row0['mutation_signal']}"
+    scenario    = f"{row0['sampling']}_{pop_model}_{row0['mutation_signal']}mutsig"
     bin_schemes = get_bin_schemes(pop_model)
     output_rows = []
 

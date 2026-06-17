@@ -56,13 +56,15 @@ def get_burnin(wildcards):
 # =============================================================================
 # Rule all — final targets
 # =============================================================================
+EVAL_DIR     = BEAST_DIR.replace("beast_inference", "evaluation")
+MUTSIG_SHORT = {"lowmutsig": "low", "medmutsig": "med", "highmutsig": "high"}
+
 rule all:
     input:
         expand(
-            f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.subsampled.log",
-            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS, i=range(NREPLICATES)
-        ),
-        f"{BEAST_DIR.replace('beast_inference', 'evaluation')}/successful_counts.tsv"
+            f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_node_errors.tsv",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS
+        )
 
 
 rule all_trees:
@@ -458,4 +460,31 @@ rule subsample_runs:
             subsample_one {input.log_constcoal} {input.trees_constcoal} {output.log_constcoal} {output.trees_constcoal}
             subsample_one {input.log_skyline}   {input.trees_skyline}   {output.log_skyline}   {output.trees_skyline}
         fi
+        """
+
+
+# =============================================================================
+# Step 10: Compute per-node errors across posterior samples for each scenario
+# =============================================================================
+rule compute_errors:
+    input:
+        tsv = lambda wc: f"{EVAL_DIR}/{wc.sampling}/{wc.popmodel}/{MUTSIG_SHORT[wc.mutsig]}.tsv",
+        subsampled_constcoal_logs   = lambda wc: expand(f"{BEAST_DIR}/constcoal/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/constcoal_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.log",   i=range(NREPLICATES)),
+        subsampled_constcoal_trees  = lambda wc: expand(f"{BEAST_DIR}/constcoal/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/constcoal_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.trees",  i=range(NREPLICATES)),
+        subsampled_skyline_logs     = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.log",     i=range(NREPLICATES)),
+        subsampled_skyline_trees    = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.trees",    i=range(NREPLICATES)),
+    output:
+        f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_node_errors.tsv",
+    log:
+        "logs/compute_errors/{sampling}_{popmodel}_{mutsig}.log"
+    resources:
+        mem_mb_per_cpu = 8000,
+        runtime = 240,
+        cpus_per_task = 1,
+    shell:
+        """
+        conda run -n beast_tools python scripts/compute_errors.py \
+            --tsv {input.tsv} \
+            --out_dir $(dirname {output}) \
+            > {log} 2>&1
         """
