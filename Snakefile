@@ -424,7 +424,7 @@ rule subsample_runs:
         log_skyline       = f"{BEAST_DIR}/skyline/{{sampling}}/{{popmodel}}/{{mutsig}}/skyline_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.log",
         trees_skyline     = f"{BEAST_DIR}/skyline/{{sampling}}/{{popmodel}}/{{mutsig}}/skyline_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined.trees",
         summary_skyline   = f"{BEAST_DIR}/skyline/{{sampling}}/{{popmodel}}/{{mutsig}}/skyline_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.combined_summary.tree",
-        counts            = f"{BEAST_DIR.replace('beast_inference', 'evaluation')}/successful_counts.tsv",
+        tsv               = lambda wc: f"{EVAL_DIR}/{wc.sampling}/{wc.popmodel}/{MUTSIG_SHORT[wc.mutsig]}.tsv",
     output:
         log_constcoal   = f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.subsampled.log",
         trees_constcoal = f"{BEAST_DIR}/constcoal/{{sampling}}/{{popmodel}}/{{mutsig}}/constcoal_{{sampling}}_{{popmodel}}_{{mutsig}}.T{{i}}.subsampled.trees",

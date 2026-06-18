@@ -26,7 +26,7 @@ def assign_model_params(pop_model):
         "expgrowthfast": {"present_pop_size": 2000, "growth_rate": 0.02, "bottleneck_size": None, "bottleneck_start": None, "bottleneck_end": None},
         "expgrowthslow": {"present_pop_size": 2000, "growth_rate": 0.01, "bottleneck_size": None, "bottleneck_start": None, "bottleneck_end": None},
         "uniform":       {"present_pop_size": 1000, "growth_rate": None, "bottleneck_size": None, "bottleneck_start": None, "bottleneck_end": None},
-        "bottleneck":    {"present_pop_size": 1000, "growth_rate": None, "bottleneck_size": 10,  "bottleneck_start": 10,   "bottleneck_end": 13},
+        "bottleneck":    {"present_pop_size": 1000, "growth_rate": None, "bottleneck_size": 100, "bottleneck_start": 20,   "bottleneck_end": 23},
     }
     return params.get(pop_model, {"present_pop_size": None, "growth_rate": None, "bottleneck_size": None, "bottleneck_start": None, "bottleneck_end": None})
 
