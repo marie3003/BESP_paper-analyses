@@ -256,7 +256,7 @@ def load_beast_trees(path):
             if not line.lower().startswith("tree "):
                 continue
             # Remove optional [&...] block between tree name and '='
-                newick = re.sub(r"\[&[^\]]*\]", "", line)
+            newick = re.sub(r"\[&[^\]]*\]", "", line)
             eq = newick.find("=")
             if eq == -1:
                 continue
