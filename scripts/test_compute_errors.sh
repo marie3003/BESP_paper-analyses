@@ -9,7 +9,7 @@
 
 mkdir -p logs/compute_errors
 
-conda run -n beast_tools python scripts/compute_errors.py \
+conda run -n beast_tools python -u scripts/compute_errors.py \
     --tsv results/run1/evaluation/linearconstant/uniform/med.tsv \
     --out_dir results/run1/evaluation/linearconstant/uniform/test/ \
     --max_reps 3

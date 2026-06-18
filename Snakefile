@@ -64,6 +64,10 @@ rule all:
         expand(
             f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_node_errors.tsv",
             sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS
+        ),
+        expand(
+            f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_pop_summary.pkl",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS
         )
 
 
@@ -474,7 +478,8 @@ rule compute_errors:
         subsampled_skyline_logs     = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.log",     i=range(NREPLICATES)),
         subsampled_skyline_trees    = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.trees",    i=range(NREPLICATES)),
     output:
-        f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_node_errors.tsv",
+        tsv = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_node_errors.tsv",
+        pkl = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_pop_summary.pkl",
     log:
         "logs/compute_errors/{sampling}_{popmodel}_{mutsig}.log"
     resources:
@@ -483,8 +488,8 @@ rule compute_errors:
         cpus_per_task = 1,
     shell:
         """
-        conda run -n beast_tools python scripts/compute_errors.py \
+        conda run -n beast_tools python -u scripts/compute_errors.py \
             --tsv {input.tsv} \
-            --out_dir $(dirname {output}) \
+            --out_dir $(dirname {output.tsv}) \
             > {log} 2>&1
         """

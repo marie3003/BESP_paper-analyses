@@ -20,6 +20,7 @@ Usage
 """
 
 import argparse
+import pickle
 import re
 import numpy as np
 import pandas as pd
@@ -293,7 +294,8 @@ def main():
     pop_model   = row0["population_model"]
     scenario    = f"{row0['sampling']}_{pop_model}_{row0['mutation_signal']}mutsig"
     bin_schemes = get_bin_schemes(pop_model)
-    output_rows = []
+    output_rows   = []
+    pop_sum_rows  = []
 
     if args.max_reps is not None:
         scenario_df = scenario_df.head(args.max_reps)
@@ -328,6 +330,11 @@ def main():
         acc = {m: {n: {met: [] for met in METRICS} for n in range(len(sim_dict))}
                for m in ("constcoal", "skyline")}
 
+        # Pop-size accumulators for summary output
+        all_sky_b  = []   # list of boundary lists, one per posterior sample
+        all_sky_Ne = []   # list of Ne lists, one per posterior sample
+        all_Ne_c   = []   # list of floats, one per posterior sample
+
         for model in ("constcoal", "skyline"):
             for s_idx in range(model_data[model]["n"]):
                 post_dict, _ = traverse_tree(model_data[model]["trees"][s_idx])
@@ -337,10 +344,13 @@ def main():
                     sky_b  = skyline_boundaries_from_preorder(post_dict, args.num_groups)
                     sky_Ne = skyline_pop_sizes(log_row, args.num_groups)
                     int_fn = lambda t0, t1, b=sky_b, ne=sky_Ne: integral_skyline(t0, t1, [0.0] + b, ne)
+                    all_sky_b.append(sky_b)
+                    all_sky_Ne.append(sky_Ne)
                 else:
                     Ne_c   = float(log_row["constant.popSize"])
                     int_fn = lambda t0, t1, Ne=Ne_c: integral_constcoal(t0, t1, Ne)
                     sky_b  = sky_Ne = None
+                    all_Ne_c.append(Ne_c)
 
                 ci_est = coalescent_intensity(events, int_fn)
 
@@ -355,6 +365,27 @@ def main():
                     )
                     for met in METRICS:
                         acc[model][node_idx][met].append(obs[met])
+
+        # Build pop-size summary for this replicate
+        sky_b_arr  = np.array(all_sky_b)   # shape: (n_samples, num_groups)
+        sky_Ne_arr = np.array(all_sky_Ne)  # shape: (n_samples, num_groups)
+        Ne_c_arr   = np.array(all_Ne_c)    # shape: (n_samples,)
+        pop_sum_rows.append({
+            "scenario":          scenario,
+            "sampling":          row0["sampling"],
+            "population_model":  pop_model,
+            "mutation_signal":   row0["mutation_signal"],
+            "tree_index":        tree_index,
+            "skyline_times":     list(np.median(sky_b_arr, axis=0)),
+            "skyline_medians":   list(np.median(sky_Ne_arr, axis=0)),
+            "skyline_lowers":    list(np.percentile(sky_Ne_arr, 2.5, axis=0)),
+            "skyline_uppers":    list(np.percentile(sky_Ne_arr, 97.5, axis=0)),
+            "skyline_samples":   pd.DataFrame(sky_Ne_arr, columns=range(args.num_groups)),
+            "coalescent_median": float(np.median(Ne_c_arr)),
+            "coalescent_lower":  float(np.percentile(Ne_c_arr, 2.5)),
+            "coalescent_upper":  float(np.percentile(Ne_c_arr, 97.5)),
+            "coalescent_samples": pd.Series(Ne_c_arr),
+        })
 
         for node_idx, (h_sim, bl_sim, is_int, node_id) in sim_dict.items():
             row = {
@@ -375,7 +406,12 @@ def main():
         print(f"  Processed replicate T{tree_index} ({len(sim_dict)} nodes)")
 
     pd.DataFrame(output_rows).to_csv(out_dir / f"{scenario}_node_errors.tsv", sep="\t", index=False)
-    print(f"Done: {scenario} — {len(output_rows)} rows")
+
+    pop_sum_df = pd.DataFrame(pop_sum_rows)
+    with open(out_dir / f"{scenario}_pop_summary.pkl", "wb") as fh:
+        pickle.dump(pop_sum_df, fh)
+
+    print(f"Done: {scenario} — {len(output_rows)} node-error rows, {len(pop_sum_rows)} pop-summary rows")
 
 
 if __name__ == "__main__":
