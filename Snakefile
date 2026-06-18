@@ -397,6 +397,11 @@ rule process_results:
         csv = f"{BEAST_DIR}/successful_mcmc_runs.csv",
     output:
         summary = f"{BEAST_DIR.replace('beast_inference', 'evaluation')}/successful_counts.tsv",
+        tsvs    = expand(
+            f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{mutsig_short}}.tsv",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS,
+            mutsig_short=["low", "med", "high"]
+        ),
     log:
         "logs/process_results/process_results.log"
     resources:
