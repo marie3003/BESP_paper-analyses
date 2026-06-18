@@ -20,6 +20,7 @@ Usage
 """
 
 import argparse
+import re
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -246,6 +247,24 @@ def assign_bin(height, edges):
 # Main
 # =============================================================================
 
+def load_beast_trees(path):
+    """Parse BEAST nexus trees, stripping metadata annotations BioPython can't handle."""
+    trees = []
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line.lower().startswith("tree "):
+                continue
+            # Remove optional [&...] block between tree name and '='
+                newick = re.sub(r"\[&[^\]]*\]", "", line)
+            eq = newick.find("=")
+            if eq == -1:
+                continue
+            newick = newick[eq + 1:].strip().rstrip(";") + ";"
+            trees.append(Phylo.read(StringIO(newick), "newick"))
+    return trees
+
+
 def load_log(path):
     df        = pd.read_csv(path, sep="\t", comment="#")
     state_col = next((c for c in ("State", "state", "Sample", "sample") if c in df.columns), None)
@@ -296,7 +315,7 @@ def main():
             if not Path(tp).exists() or Path(tp).stat().st_size == 0:
                 skip = True; break
             log   = load_log(lp)
-            trees = list(Phylo.parse(tp, "nexus"))
+            trees = load_beast_trees(tp)
             model_data[model] = {"log": log, "trees": trees, "n": min(len(trees), len(log))}
         if skip:
             continue
