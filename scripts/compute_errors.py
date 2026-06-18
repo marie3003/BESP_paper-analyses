@@ -248,7 +248,9 @@ def assign_bin(height, edges):
 
 def load_log(path):
     df        = pd.read_csv(path, sep="\t", comment="#")
-    state_col = "State" if "State" in df.columns else "Sample"
+    state_col = next((c for c in ("State", "state", "Sample", "sample") if c in df.columns), None)
+    if state_col is None:
+        raise KeyError(f"No state/sample column found in {path}. Columns: {list(df.columns)}")
     return df[pd.to_numeric(df[state_col], errors="coerce").notna()].reset_index(drop=True)
 
 
