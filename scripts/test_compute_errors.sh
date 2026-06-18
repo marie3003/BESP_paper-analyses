@@ -11,4 +11,5 @@ mkdir -p logs/compute_errors
 
 conda run -n beast_tools python scripts/compute_errors.py \
     --tsv results/run1/evaluation/linearconstant/uniform/med.tsv \
-    --out_dir results/run1/evaluation/linearconstant/uniform/
+    --out_dir results/run1/evaluation/linearconstant/uniform/ \
+    --max_reps 3

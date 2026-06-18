@@ -278,6 +278,7 @@ def main():
     parser.add_argument("--tsv",        required=True)
     parser.add_argument("--out_dir",    required=True)
     parser.add_argument("--num_groups", type=int, default=10)
+    parser.add_argument("--max_reps",   type=int, default=None)
     args = parser.parse_args()
 
     out_dir     = Path(args.out_dir)
@@ -293,6 +294,9 @@ def main():
     scenario    = f"{row0['sampling']}_{pop_model}_{row0['mutation_signal']}mutsig"
     bin_schemes = get_bin_schemes(pop_model)
     output_rows = []
+
+    if args.max_reps is not None:
+        scenario_df = scenario_df.head(args.max_reps)
 
     for _, rep_row in scenario_df.iterrows():
         tree_index = int(rep_row["tree_index"])
