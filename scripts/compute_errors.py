@@ -366,10 +366,17 @@ def main():
                     for met in METRICS:
                         acc[model][node_idx][met].append(obs[met])
 
-        # Build pop-size summary for this replicate
-        sky_b_arr  = np.array(all_sky_b)   # shape: (n_samples, num_groups)
-        sky_Ne_arr = np.array(all_sky_Ne)  # shape: (n_samples, num_groups)
-        Ne_c_arr   = np.array(all_Ne_c)    # shape: (n_samples,)
+        # Build pop-size summary for this replicate — subsample to 100 for storage
+        rng        = np.random.default_rng(seed=tree_index)
+        sky_b_arr  = np.array(all_sky_b)
+        sky_Ne_arr = np.array(all_sky_Ne)
+        Ne_c_arr   = np.array(all_Ne_c)
+        n_keep     = min(100, len(sky_Ne_arr))
+        idx_sky    = rng.choice(len(sky_Ne_arr), size=n_keep, replace=False)
+        idx_c      = rng.choice(len(Ne_c_arr),   size=n_keep, replace=False)
+        sky_b_arr  = sky_b_arr[idx_sky]
+        sky_Ne_arr = sky_Ne_arr[idx_sky]
+        Ne_c_arr   = Ne_c_arr[idx_c]
         pop_sum_rows.append({
             "scenario":          scenario,
             "sampling":          row0["sampling"],
