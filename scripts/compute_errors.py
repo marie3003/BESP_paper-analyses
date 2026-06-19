@@ -327,7 +327,8 @@ def main():
             continue
 
         # Accumulators: model -> node_idx -> metric -> [values]
-        acc = {m: {n: {met: [] for met in METRICS} for n in range(len(sim_dict))}
+        EXTRA = ["height_est", "bl_est"]
+        acc = {m: {n: {met: [] for met in METRICS + EXTRA} for n in range(len(sim_dict))}
                for m in ("constcoal", "skyline")}
 
         # Pop-size accumulators for summary output
@@ -365,6 +366,8 @@ def main():
                     )
                     for met in METRICS:
                         acc[model][node_idx][met].append(obs[met])
+                    acc[model][node_idx]["height_est"].append(h_est if is_int else np.nan)
+                    acc[model][node_idx]["bl_est"].append(bl_est)
 
         # Build pop-size summary for this replicate — subsample to 100 for storage
         rng        = np.random.default_rng(seed=tree_index)
@@ -387,7 +390,8 @@ def main():
             "skyline_medians":   list(np.median(sky_Ne_arr, axis=0)),
             "skyline_lowers":    list(np.percentile(sky_Ne_arr, 2.5, axis=0)),
             "skyline_uppers":    list(np.percentile(sky_Ne_arr, 97.5, axis=0)),
-            "skyline_samples":   pd.DataFrame(sky_Ne_arr, columns=range(args.num_groups)),
+            "skyline_samples":        pd.DataFrame(sky_Ne_arr, columns=range(args.num_groups)),
+            "skyline_times_samples":  pd.DataFrame(sky_b_arr,  columns=range(args.num_groups)),
             "coalescent_median": float(np.median(Ne_c_arr)),
             "coalescent_lower":  float(np.percentile(Ne_c_arr, 2.5)),
             "coalescent_upper":  float(np.percentile(Ne_c_arr, 97.5)),
@@ -408,6 +412,17 @@ def main():
                     row[f"{model}_{met}_median"]    = med
                     row[f"{model}_{met}_hpd_lower"] = lo
                     row[f"{model}_{met}_hpd_upper"] = hi
+                for est in EXTRA:
+                    med, lo, hi = summarize(acc[model][node_idx][est])
+                    row[f"{model}_{est}_median"]    = med
+                    row[f"{model}_{est}_hpd_lower"] = lo
+                    row[f"{model}_{est}_hpd_upper"] = hi
+                h_lo = row[f"{model}_height_est_hpd_lower"]
+                h_hi = row[f"{model}_height_est_hpd_upper"]
+                b_lo = row[f"{model}_bl_est_hpd_lower"]
+                b_hi = row[f"{model}_bl_est_hpd_upper"]
+                row[f"{model}_height_inside_ci"] = bool(h_lo <= h_sim <= h_hi) if is_int else np.nan
+                row[f"{model}_bl_inside_ci"]     = bool(b_lo <= bl_sim <= b_hi)
             output_rows.append(row)
 
         print(f"  Processed replicate T{tree_index} ({len(sim_dict)} nodes)")
