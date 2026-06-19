@@ -34,11 +34,21 @@ from math import comb
 # Statistics
 # =============================================================================
 
+def hpd(vals, credible_mass=0.95):
+    vals = np.sort(vals)
+    n = len(vals)
+    width = int(np.ceil(credible_mass * n))
+    spans = vals[width - 1:] - vals[:n - width + 1]
+    i = np.argmin(spans)
+    return float(vals[i]), float(vals[i + width - 1])
+
+
 def summarize(values):
     vals = np.array([v for v in values if not np.isnan(v)], dtype=float)
     if len(vals) == 0:
         return np.nan, np.nan, np.nan
-    return float(np.median(vals)), float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5))
+    lo, hi = hpd(vals)
+    return float(np.median(vals)), lo, hi
 
 
 # =============================================================================
