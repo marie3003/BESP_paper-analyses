@@ -59,6 +59,25 @@ def get_burnin(wildcards):
 EVAL_DIR     = BEAST_DIR.replace("beast_inference", "evaluation")
 MUTSIG_SHORT = {"lowmutsig": "low", "medmutsig": "med", "highmutsig": "high"}
 
+# Time binning configurations per population model
+_CONFIGS_ALL        = [(5, 400), (5, 100), (10, 300)]
+_CONFIGS_NOBOTTLE   = [(10, 100), (20, 200)]
+_CONFIGS_BOTTLE     = [(3, 30), (3, 50), (1, 30)]
+
+TIME_BIN_CONFIGS = {
+    "uniform":       _CONFIGS_ALL + _CONFIGS_NOBOTTLE,
+    "expgrowthfast": _CONFIGS_ALL + _CONFIGS_NOBOTTLE,
+    "expgrowthslow": _CONFIGS_ALL + _CONFIGS_NOBOTTLE,
+    "bottleneck":    _CONFIGS_ALL + _CONFIGS_BOTTLE,
+}
+
+# flat set of all (popmodel, bw, cutoff) combos for wildcard_constraints
+_ALL_CONFIGS = set(
+    (bw, co)
+    for configs in TIME_BIN_CONFIGS.values()
+    for bw, co in configs
+)
+
 rule all:
     input:
         expand(
@@ -68,7 +87,14 @@ rule all:
         expand(
             f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_pop_summary.pkl",
             sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS
-        )
+        ),
+        [
+            f"{EVAL_DIR}/{sampling}/{popmodel}/{sampling}_{popmodel}_{mutsig}_time_bins_w{int(bw)}_c{int(co)}.tsv"
+            for sampling in SAMPLING_TYPES
+            for popmodel in POP_MODELS
+            for mutsig in MUTSIGS
+            for bw, co in TIME_BIN_CONFIGS[popmodel]
+        ],
 
 
 rule all_trees:
@@ -496,5 +522,37 @@ rule compute_errors:
         conda run -n beast_tools python -u scripts/compute_errors.py \
             --tsv {input.tsv} \
             --out_dir $(dirname {output.tsv}) \
+            > {log} 2>&1
+        """
+
+
+# =============================================================================
+# Step 11: Compute time-binned summaries (median + HPD) over all posterior
+#          samples × replicates for each scenario / bin-width / cutoff combo
+# =============================================================================
+rule compute_time_bins:
+    input:
+        tsv = lambda wc: f"{EVAL_DIR}/{wc.sampling}/{wc.popmodel}/{MUTSIG_SHORT[wc.mutsig]}.tsv",
+        subsampled_constcoal_logs   = lambda wc: expand(f"{BEAST_DIR}/constcoal/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/constcoal_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.log",   i=range(NREPLICATES)),
+        subsampled_constcoal_trees  = lambda wc: expand(f"{BEAST_DIR}/constcoal/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/constcoal_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.trees",  i=range(NREPLICATES)),
+        subsampled_skyline_logs     = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.log",     i=range(NREPLICATES)),
+        subsampled_skyline_trees    = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.trees",    i=range(NREPLICATES)),
+    output:
+        f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_time_bins_w{{binw}}_c{{cutoff}}.tsv",
+    wildcard_constraints:
+        binw   = "|".join(sorted({str(int(bw)) for bw, co in _ALL_CONFIGS}, key=lambda x: -len(x))),
+        cutoff = "|".join(sorted({str(int(co)) for bw, co in _ALL_CONFIGS}, key=lambda x: -len(x))),
+    log:
+        "logs/compute_time_bins/{sampling}_{popmodel}_{mutsig}_w{binw}_c{cutoff}.log"
+    resources:
+        mem_mb_per_cpu = 16000,
+        runtime = 240,
+        cpus_per_task = 1,
+    shell:
+        """
+        conda run -n beast_tools python -u scripts/compute_time_bins.py \
+            --tsv {input.tsv} \
+            --out_dir $(dirname {output}) \
+            --config {wildcards.binw},{wildcards.cutoff} \
             > {log} 2>&1
         """

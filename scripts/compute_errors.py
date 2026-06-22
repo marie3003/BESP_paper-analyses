@@ -8,7 +8,7 @@ Topology is fixed: all posterior trees share the same topology as the
 simulated tree, so nodes are matched by preorder position throughout.
 
 Each tree is traversed exactly once. The simulated tree produces a node
-dictionary and event list reused for all posterior samples.
+dictionary reused for all posterior samples.
 
 Output: one TSV per scenario, one row per (replicate, node).
 
@@ -27,7 +27,6 @@ import pandas as pd
 from pathlib import Path
 from Bio import Phylo
 from io import StringIO
-from math import comb
 
 
 # =============================================================================
@@ -58,16 +57,14 @@ def summarize(values):
 def traverse_tree(tree):
     """
     Single traversal. Assigns node names (internal_i / tip_i) in place,
-    builds node dict and event list.
+    builds node dict.
 
     Returns:
       node_dict : node_idx -> (height, bl, is_internal, node_id)
-      events    : sorted [(time, "sample"/"coal", clade)] for CI sweep
     """
     depths      = tree.depths()
     root_height = max(d for node, d in depths.items() if node.is_terminal())
-    node_dict = {}
-    events    = []
+    node_dict   = {}
 
     for node_idx, clade in enumerate(tree.find_clades(order="preorder")):
         is_int  = not clade.is_terminal()
@@ -77,15 +74,12 @@ def traverse_tree(tree):
         h  = root_height - depths[clade]
         bl = clade.branch_length or 0.0
         node_dict[node_idx] = (h, bl, is_int, node_id)
-        n_children = len(clade.clades) if is_int else 1
-        events.append((h, "coal" if is_int else "sample", node_idx, n_children))
 
-    events.sort(key=lambda x: x[0])
-    return node_dict, events
+    return node_dict
 
 
 # =============================================================================
-# Population trajectory and integrals
+# Population trajectory
 # =============================================================================
 
 def get_true_traj(pop_model, row):
@@ -98,67 +92,6 @@ def get_true_traj(pop_model, row):
         return lambda t: Nb if bs < t < be else N0
     else:
         return lambda t: float(row["present_pop_size"])
-
-
-def integral_true(t0, t1, pop_model, row):
-    if t1 <= t0:
-        return 0.0
-    if pop_model in ("expgrowthfast", "expgrowthslow"):
-        N0, r = float(row["present_pop_size"]), float(row["growth_rate"])
-        return (np.exp(r * t1) - np.exp(r * t0)) / (N0 * r)
-    elif pop_model.startswith("bottleneck"):
-        N0, Nb = float(row["present_pop_size"]), float(row["bottleneck_size"])
-        bs, be = float(row["bottleneck_start"]),  float(row["bottleneck_end"])
-        total = 0.0
-        for a, b, Ne in [(0.0, bs, N0), (bs, be, Nb), (be, np.inf, N0)]:
-            l, r = max(t0, a), min(t1, b)
-            if r > l: total += (r - l) / Ne
-        return total
-    else:
-        return (t1 - t0) / float(row["present_pop_size"])
-
-
-def integral_constcoal(t0, t1, Ne):
-    return (t1 - t0) / Ne if t1 > t0 else 0.0
-
-
-def integral_skyline(t0, t1, bounds, pop_sizes):
-    if t1 <= t0:
-        return 0.0
-    total = 0.0
-    for a, b, Ne in zip(bounds[:-1], bounds[1:], pop_sizes):
-        l, r = max(t0, a), min(t1, b)
-        if r > l: total += (r - l) / Ne
-    if t1 > bounds[-1]:
-        total += (t1 - max(t0, bounds[-1])) / pop_sizes[-1]
-    return total
-
-
-# =============================================================================
-# Coalescent intensity sweep
-# =============================================================================
-
-def coalescent_intensity(events, integral_fn):
-    """
-    Accumulate coalescent intensity H at each internal node.
-    Returns dict: node_idx -> H at that coalescent event.
-    """
-    H, k, t_prev, ci = 0.0, 0, 0.0, {}
-    i = 0
-    while i < len(events):
-        t = events[i][0]
-        if t > t_prev and k >= 2:
-            H += comb(k, 2) * integral_fn(t_prev, t)
-        batch = []
-        while i < len(events) and events[i][0] == t:
-            batch.append(events[i]); i += 1
-        for _, etype, node_idx, _ in batch:
-            if etype == "coal": ci[node_idx] = H
-        for _, etype, node_idx, n_children in batch:
-            if etype == "sample": k += 1
-            elif etype == "coal": k -= max(n_children - 1, 1)
-        t_prev = t
-    return ci
 
 
 # =============================================================================
@@ -197,14 +130,12 @@ def skyline_Ne_at(t, bounds, pop_sizes):
 METRICS = [
     "pop_diff",    "pop_rel_error",    "pop_abs_rel_error",
     "rate_diff",   "rate_rel_error",   "rate_abs_rel_error",
-    "ci_diff",     "ci_rel_error",     "ci_abs_rel_error",
     "height_diff", "height_rel_error", "height_abs_rel_error",
     "bl_diff",     "bl_rel_error",     "bl_abs_rel_error",
 ]
 
 
-def compute_errors(h_sim, bl_sim, h_est, bl_est, is_int,
-                   Ne_true, Ne_est, ci_true, ci_est):
+def compute_errors(h_sim, bl_sim, h_est, bl_est, is_int, Ne_true, Ne_est):
     def sd(a, b): return a / b if b and b != 0 and not np.isnan(b) else np.nan
 
     pop_d  = Ne_est - Ne_true
@@ -213,45 +144,17 @@ def compute_errors(h_sim, bl_sim, h_est, bl_est, is_int,
     rate_d = re - rt if not np.isnan(rt) else np.nan
     h_d    = h_est - h_sim if is_int else np.nan
     bl_d   = bl_est - bl_sim
-    ci_d   = (ci_est - ci_true) if is_int and not np.isnan(ci_true) and not np.isnan(ci_est) else np.nan
 
     return {
         "pop_diff":             pop_d,          "pop_rel_error":        sd(pop_d, Ne_true),
         "pop_abs_rel_error":    abs(sd(pop_d, Ne_true)),
         "rate_diff":            rate_d,         "rate_rel_error":       sd(rate_d, rt),
         "rate_abs_rel_error":   abs(sd(rate_d, rt)),
-        "ci_diff":              ci_d,           "ci_rel_error":         sd(ci_d, ci_true)      if is_int else np.nan,
-        "ci_abs_rel_error":     abs(sd(ci_d, ci_true))  if is_int else np.nan,
-        "height_diff":          h_d,            "height_rel_error":     sd(h_d, h_sim)         if is_int else np.nan,
-        "height_abs_rel_error": abs(sd(h_d, h_sim))     if is_int else np.nan,
+        "height_diff":          h_d,            "height_rel_error":     sd(h_d, h_sim)  if is_int else np.nan,
+        "height_abs_rel_error": abs(sd(h_d, h_sim))    if is_int else np.nan,
         "bl_diff":              bl_d,           "bl_rel_error":         sd(bl_d, bl_sim),
         "bl_abs_rel_error":     abs(sd(bl_d, bl_sim)),
     }
-
-
-# =============================================================================
-# Time bin schemes
-# =============================================================================
-
-def get_bin_schemes(pop_model):
-    schemes = {
-        "medium5_200": list(range(0, 201, 5)) + [np.inf],
-        "medium5_400": list(range(0, 401, 5)) + [np.inf],
-        "coarse20": list(range(0, 181, 20)) + [np.inf],
-    }
-    if pop_model.startswith("bottleneck"):
-        schemes["fine3"] = list(range(0, 31, 3)) + [np.inf]
-        schemes["fine1"] = list(range(0, 31, 1)) + [np.inf]
-    else:
-        schemes["medium10"] = list(range(0, 401, 10)) + [np.inf]
-    return schemes
-
-
-def assign_bin(height, edges):
-    for i in range(len(edges) - 1):
-        if edges[i] <= height < edges[i + 1]:
-            return i
-    return len(edges) - 2
 
 
 # =============================================================================
@@ -266,7 +169,6 @@ def load_beast_trees(path):
             line = line.strip()
             if not line.lower().startswith("tree "):
                 continue
-            # Remove optional [&...] block between tree name and '='
             newick = re.sub(r"\[&[^\]]*\]", "", line)
             eq = newick.find("=")
             if eq == -1:
@@ -303,9 +205,8 @@ def main():
     row0        = scenario_df.iloc[0]
     pop_model   = row0["population_model"]
     scenario    = f"{row0['sampling']}_{pop_model}_{row0['mutation_signal']}mutsig"
-    bin_schemes = get_bin_schemes(pop_model)
-    output_rows   = []
-    pop_sum_rows  = []
+    output_rows  = []
+    pop_sum_rows = []
 
     if args.max_reps is not None:
         scenario_df = scenario_df.head(args.max_reps)
@@ -313,16 +214,13 @@ def main():
     for _, rep_row in scenario_df.iterrows():
         tree_index = int(rep_row["tree_index"])
 
-        # Simulated tree — one traversal, builds everything reused across all samples
+        # Simulated tree
         with open(rep_row["sim_tree_path"]) as fh:
             lines = [l.strip() for l in fh if l.strip()]
-        sim_dict, events = traverse_tree(Phylo.read(StringIO(lines[tree_index]), "newick"))
+        sim_dict  = traverse_tree(Phylo.read(StringIO(lines[tree_index]), "newick"))
         true_traj = get_true_traj(pop_model, rep_row)
-        ci_true   = coalescent_intensity(
-            events, lambda t0, t1, pm=pop_model, r=rep_row: integral_true(t0, t1, pm, r)
-        )
 
-        # Load subsampled files — skip replicate if either model's files are empty (ESS failed)
+        # Load subsampled files — skip replicate if either model's files are missing/empty
         model_data = {}
         skip = False
         for model in ("constcoal", "skyline"):
@@ -342,28 +240,24 @@ def main():
                for m in ("constcoal", "skyline")}
 
         # Pop-size accumulators for summary output
-        all_sky_b  = []   # list of boundary lists, one per posterior sample
-        all_sky_Ne = []   # list of Ne lists, one per posterior sample
-        all_Ne_c   = []   # list of floats, one per posterior sample
+        all_sky_b  = []
+        all_sky_Ne = []
+        all_Ne_c   = []
 
         for model in ("constcoal", "skyline"):
             for s_idx in range(model_data[model]["n"]):
-                post_dict, _ = traverse_tree(model_data[model]["trees"][s_idx])
-                log_row          = model_data[model]["log"].iloc[s_idx]
+                post_dict = traverse_tree(model_data[model]["trees"][s_idx])
+                log_row   = model_data[model]["log"].iloc[s_idx]
 
                 if model == "skyline":
                     sky_b  = skyline_boundaries_from_preorder(post_dict, args.num_groups)
                     sky_Ne = skyline_pop_sizes(log_row, args.num_groups)
-                    int_fn = lambda t0, t1, b=sky_b, ne=sky_Ne: integral_skyline(t0, t1, [0.0] + b, ne)
                     all_sky_b.append(sky_b)
                     all_sky_Ne.append(sky_Ne)
                 else:
                     Ne_c   = float(log_row["constant.popSize"])
-                    int_fn = lambda t0, t1, Ne=Ne_c: integral_constcoal(t0, t1, Ne)
                     sky_b  = sky_Ne = None
                     all_Ne_c.append(Ne_c)
-
-                ci_est = coalescent_intensity(events, int_fn)
 
                 for node_idx, (h_est, bl_est, _, _) in post_dict.items():
                     h_sim, bl_sim, is_int, _ = sim_dict[node_idx]
@@ -372,14 +266,13 @@ def main():
                     obs = compute_errors(
                         h_sim, bl_sim, h_est, bl_est, is_int,
                         true_traj(h_sim), Ne_est,
-                        ci_true.get(node_idx, np.nan), ci_est.get(node_idx, np.nan)
                     )
                     for met in METRICS:
                         acc[model][node_idx][met].append(obs[met])
                     acc[model][node_idx]["height_est"].append(h_est if is_int else np.nan)
                     acc[model][node_idx]["bl_est"].append(bl_est)
 
-        # Build pop-size summary for this replicate — subsample to 100 for storage
+        # Build pop-size summary — subsample to 100 for storage
         rng        = np.random.default_rng(seed=tree_index)
         sky_b_arr  = np.array(all_sky_b)
         sky_Ne_arr = np.array(all_sky_Ne)
@@ -391,21 +284,21 @@ def main():
         sky_Ne_arr = sky_Ne_arr[idx_sky]
         Ne_c_arr   = Ne_c_arr[idx_c]
         pop_sum_rows.append({
-            "scenario":          scenario,
-            "sampling":          row0["sampling"],
-            "population_model":  pop_model,
-            "mutation_signal":   row0["mutation_signal"],
-            "tree_index":        tree_index,
-            "skyline_times":     list(np.median(sky_b_arr, axis=0)),
-            "skyline_medians":   list(np.median(sky_Ne_arr, axis=0)),
-            "skyline_lowers":    list(np.percentile(sky_Ne_arr, 2.5, axis=0)),
-            "skyline_uppers":    list(np.percentile(sky_Ne_arr, 97.5, axis=0)),
+            "scenario":               scenario,
+            "sampling":               row0["sampling"],
+            "population_model":       pop_model,
+            "mutation_signal":        row0["mutation_signal"],
+            "tree_index":             tree_index,
+            "skyline_times":          list(np.median(sky_b_arr, axis=0)),
+            "skyline_medians":        list(np.median(sky_Ne_arr, axis=0)),
+            "skyline_lowers":         list(np.percentile(sky_Ne_arr, 2.5, axis=0)),
+            "skyline_uppers":         list(np.percentile(sky_Ne_arr, 97.5, axis=0)),
             "skyline_samples":        pd.DataFrame(sky_Ne_arr, columns=range(args.num_groups)),
             "skyline_times_samples":  pd.DataFrame(sky_b_arr,  columns=range(args.num_groups)),
-            "coalescent_median": float(np.median(Ne_c_arr)),
-            "coalescent_lower":  float(np.percentile(Ne_c_arr, 2.5)),
-            "coalescent_upper":  float(np.percentile(Ne_c_arr, 97.5)),
-            "coalescent_samples": pd.Series(Ne_c_arr),
+            "coalescent_median":      float(np.median(Ne_c_arr)),
+            "coalescent_lower":       float(np.percentile(Ne_c_arr, 2.5)),
+            "coalescent_upper":       float(np.percentile(Ne_c_arr, 97.5)),
+            "coalescent_samples":     pd.Series(Ne_c_arr),
         })
 
         for node_idx, (h_sim, bl_sim, is_int, node_id) in sim_dict.items():
@@ -414,8 +307,6 @@ def main():
                 "node_idx": node_idx, "node_id":    node_id,
                 "internal": is_int,   "height_sim": h_sim, "bl_sim": bl_sim,
             }
-            for scheme, edges in bin_schemes.items():
-                row[f"bin_{scheme}"] = assign_bin(h_sim, edges)
             for model in ("constcoal", "skyline"):
                 for met in METRICS:
                     med, lo, hi = summarize(acc[model][node_idx][met])

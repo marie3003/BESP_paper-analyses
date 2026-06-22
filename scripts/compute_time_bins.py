@@ -244,6 +244,14 @@ def main():
         (bw, co): {b: defaultdict(farr) for b in range(len(bins))}
         for (bw, co), bins in all_bins.items()
     }
+    # CI coverage: fraction of (replicate × node) pairs where true value is inside posterior HPD
+    ci_acc = {
+        (bw, co): {
+            model: {b: {"height_ci": farr(), "bl_ci": farr()} for b in range(len(bins))}
+            for model in ("constcoal", "skyline")
+        }
+        for (bw, co), bins in all_bins.items()
+    }
     n_nodes_per_bin = {(bw, co): defaultdict(int) for bw, co in configs}
 
     for _, rep_row in scenario_df.iterrows():
@@ -289,6 +297,10 @@ def main():
             tp, lp = paths[model]
             log_df = load_log(lp)
 
+            # per-node accumulators for CI coverage (reset each replicate × model)
+            node_h_est  = {i: array('f') for i in sim_dict}
+            node_bl_est = {i: array('f') for i in sim_dict}
+
             for s_idx, post_tree in enumerate(stream_beast_trees(tp)):
                 if s_idx >= len(log_df):
                     break
@@ -319,6 +331,23 @@ def main():
                         acc[key][model][bin_idx]["Ne_est"].append(Ne_est)
                         acc[key][model][bin_idx]["rate_est"].append(1.0 / Ne_est if Ne_est else np.nan)
 
+                    if is_int:
+                        node_h_est[node_idx].append(h_est)
+                    node_bl_est[node_idx].append(bl_est)
+
+            # compute CI coverage per node after all posterior samples are accumulated
+            for node_idx, (h_sim, bl_sim, is_int, _) in sim_dict.items():
+                h_vals  = np.frombuffer(node_h_est[node_idx],  dtype=np.float32)
+                bl_vals = np.frombuffer(node_bl_est[node_idx], dtype=np.float32)
+                for key in configs:
+                    bin_idx = bin_assignments[key][node_idx]
+                    if is_int and len(h_vals) >= 2:
+                        h_lo, h_hi = hpd(h_vals)
+                        ci_acc[key][model][bin_idx]["height_ci"].append(float(h_lo <= h_sim <= h_hi))
+                    if len(bl_vals) >= 2:
+                        b_lo, b_hi = hpd(bl_vals)
+                        ci_acc[key][model][bin_idx]["bl_ci"].append(float(b_lo <= bl_sim <= b_hi))
+
         print(f"  Processed replicate T{tree_index}", flush=True)
 
     # Write one output file per config
@@ -348,6 +377,12 @@ def main():
                     row[f"{met}_median"]    = med
                     row[f"{met}_hpd_lower"] = lo
                     row[f"{met}_hpd_upper"] = hi
+                # CI coverage: fraction of nodes whose true value is inside posterior HPD
+                ci_b = ci_acc[(bw, co)][model][bin_idx]
+                h_ci = np.frombuffer(ci_b["height_ci"], dtype=np.float32)
+                bl_ci = np.frombuffer(ci_b["bl_ci"],    dtype=np.float32)
+                row["height_ci_coverage"] = float(np.mean(h_ci))  if len(h_ci)  > 0 else np.nan
+                row["bl_ci_coverage"]     = float(np.mean(bl_ci)) if len(bl_ci) > 0 else np.nan
                 output_rows.append(row)
 
         suffix   = f"w{int(bw)}_c{int(co)}"
