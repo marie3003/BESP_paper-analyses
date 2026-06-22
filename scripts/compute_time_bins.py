@@ -24,6 +24,7 @@ import argparse
 import re
 import numpy as np
 import pandas as pd
+from array import array
 from pathlib import Path
 from collections import defaultdict
 from Bio import Phylo
@@ -44,7 +45,8 @@ def hpd(vals, credible_mass=0.95):
 
 
 def summarize(values):
-    vals = np.array([v for v in values if not np.isnan(v)], dtype=float)
+    vals = np.frombuffer(values, dtype=np.float32) if isinstance(values, array) else np.array(values, dtype=np.float32)
+    vals = vals[~np.isnan(vals)]
     if len(vals) == 0:
         return np.nan, np.nan, np.nan
     lo, hi = hpd(vals)
@@ -230,16 +232,18 @@ def main():
     # Build bin lists, edge arrays and accumulators for all configs up front
     all_bins  = {(bw, co): make_bins(bw, co)  for bw, co in configs}
     all_edges = {(bw, co): make_edges(bw, co) for bw, co in configs}
+    def farr(): return array('f')
+
     acc = {
         (bw, co): {
-            model: {b: defaultdict(list) for b in range(len(bins))}
+            model: {b: defaultdict(farr) for b in range(len(bins))}
             for model in ("constcoal", "skyline")
         }
         for (bw, co), bins in all_bins.items()
     }
     # true values are model-independent — accumulated once per node per replicate
     true_acc = {
-        (bw, co): {b: defaultdict(list) for b in range(len(bins))}
+        (bw, co): {b: defaultdict(farr) for b in range(len(bins))}
         for (bw, co), bins in all_bins.items()
     }
     n_nodes_per_bin = {(bw, co): defaultdict(int) for bw, co in configs}
