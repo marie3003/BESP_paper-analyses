@@ -203,16 +203,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tsv",        required=True)
     parser.add_argument("--out_dir",    required=True)
-    parser.add_argument("--configs",    required=True, nargs="+",
-                        help="One or more bin_width,cutoff pairs e.g. '10,400' '20,400'")
+    parser.add_argument("--config",     required=True,
+                        help="Single bin_width,cutoff pair e.g. '10,400'")
     parser.add_argument("--num_groups", type=int, default=10)
     parser.add_argument("--max_reps",   type=int, default=None)
     args = parser.parse_args()
 
-    configs = []
-    for c in args.configs:
-        bw, co = c.split(",")
-        configs.append((float(bw), float(co)))
+    bw, co = args.config.split(",")
+    configs = [(float(bw), float(co))]
 
     out_dir     = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
