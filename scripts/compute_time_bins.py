@@ -70,8 +70,8 @@ def traverse_tree(tree):
     return node_dict
 
 
-def load_beast_trees(path):
-    trees = []
+def stream_beast_trees(path):
+    """Yield one parsed tree at a time — O(1) memory."""
     with open(path) as fh:
         for line in fh:
             line = line.strip()
@@ -82,8 +82,7 @@ def load_beast_trees(path):
             if eq == -1:
                 continue
             newick = newick[eq + 1:].strip().rstrip(";") + ";"
-            trees.append(Phylo.read(StringIO(newick), "newick"))
-    return trees
+            yield Phylo.read(StringIO(newick), "newick")
 
 
 def load_log(path):
@@ -145,6 +144,9 @@ METRICS = [
     "height_diff", "height_rel_error", "height_abs_rel_error",
     "bl_diff",     "bl_rel_error",     "bl_abs_rel_error",
 ]
+# raw values accumulated per-sample (estimated) or once per node (true)
+EST_METRICS  = ["height_est", "bl_est", "Ne_est", "rate_est"]
+TRUE_METRICS = ["height_sim", "bl_sim", "Ne_true", "rate_true"]
 
 
 def compute_errors(h_sim, bl_sim, h_est, bl_est, is_int, Ne_true, Ne_est):
@@ -182,11 +184,13 @@ def make_bins(bin_width, cutoff):
     return [(edges[i], edges[i + 1]) for i in range(len(edges) - 1)]
 
 
-def assign_bin(h, bins):
-    for idx, (lo, hi) in enumerate(bins):
-        if lo <= h < hi:
-            return idx
-    return len(bins) - 1
+def make_edges(bin_width, cutoff):
+    """Flat left-edge array for use with np.searchsorted."""
+    return np.array(list(np.arange(0, cutoff, bin_width)) + [cutoff])
+
+
+def assign_bin(h, edges, n_bins):
+    return min(int(np.searchsorted(edges, h, side="right")) - 1, n_bins - 1)
 
 
 # =============================================================================
@@ -223,13 +227,19 @@ def main():
     pop_model = row0["population_model"]
     scenario  = f"{row0['sampling']}_{pop_model}_{row0['mutation_signal']}mutsig"
 
-    # Build bin lists and accumulators for all configs up front
-    all_bins = {(bw, co): make_bins(bw, co) for bw, co in configs}
+    # Build bin lists, edge arrays and accumulators for all configs up front
+    all_bins  = {(bw, co): make_bins(bw, co)  for bw, co in configs}
+    all_edges = {(bw, co): make_edges(bw, co) for bw, co in configs}
     acc = {
         (bw, co): {
             model: {b: defaultdict(list) for b in range(len(bins))}
             for model in ("constcoal", "skyline")
         }
+        for (bw, co), bins in all_bins.items()
+    }
+    # true values are model-independent — accumulated once per node per replicate
+    true_acc = {
+        (bw, co): {b: defaultdict(list) for b in range(len(bins))}
         for (bw, co), bins in all_bins.items()
     }
     n_nodes_per_bin = {(bw, co): defaultdict(int) for bw, co in configs}
@@ -242,28 +252,46 @@ def main():
         sim_dict  = traverse_tree(Phylo.read(StringIO(lines[tree_index]), "newick"))
         true_traj = get_true_traj(pop_model, rep_row)
 
-        # count distinct nodes per bin for each config
-        for node_idx, (h_sim, _, _, _) in sim_dict.items():
-            for key, bins in all_bins.items():
-                n_nodes_per_bin[key][assign_bin(h_sim, bins)] += 1
+        # precompute bin assignment per node for each config (h_sim is fixed)
+        bin_assignments = {
+            key: {
+                node_idx: assign_bin(h_sim, all_edges[key], len(all_bins[key]))
+                for node_idx, (h_sim, _, _, _) in sim_dict.items()
+            }
+            for key in configs
+        }
+        for key, node_bins in bin_assignments.items():
+            for node_idx, bin_idx in node_bins.items():
+                n_nodes_per_bin[key][bin_idx] += 1
+                h_sim, bl_sim, is_int, _ = sim_dict[node_idx]
+                Ne_true = true_traj(h_sim)
+                if is_int:
+                    true_acc[key][bin_idx]["height_sim"].append(h_sim)
+                true_acc[key][bin_idx]["bl_sim"].append(bl_sim)
+                true_acc[key][bin_idx]["Ne_true"].append(Ne_true)
+                true_acc[key][bin_idx]["rate_true"].append(1.0 / Ne_true if Ne_true else np.nan)
 
-        model_data = {}
+        # check files exist before streaming
+        paths = {}
         skip = False
         for model in ("constcoal", "skyline"):
             tp = rep_row[f"trees_path_{model}"].replace(".combined.trees", ".subsampled.trees")
             lp = rep_row[f"log_path_{model}"].replace(".combined.log",     ".subsampled.log")
             if not Path(tp).exists() or Path(tp).stat().st_size == 0:
                 skip = True; break
-            log_df = load_log(lp)
-            trees  = load_beast_trees(tp)
-            model_data[model] = {"log": log_df, "trees": trees, "n": min(len(trees), len(log_df))}
+            paths[model] = (tp, lp)
         if skip:
             continue
 
         for model in ("constcoal", "skyline"):
-            for s_idx in range(model_data[model]["n"]):
-                post_dict = traverse_tree(model_data[model]["trees"][s_idx])
-                log_row   = model_data[model]["log"].iloc[s_idx]
+            tp, lp = paths[model]
+            log_df = load_log(lp)
+
+            for s_idx, post_tree in enumerate(stream_beast_trees(tp)):
+                if s_idx >= len(log_df):
+                    break
+                log_row   = log_df.iloc[s_idx]
+                post_dict = traverse_tree(post_tree)
 
                 if model == "skyline":
                     sky_b  = skyline_boundaries_from_preorder(post_dict, args.num_groups)
@@ -278,11 +306,16 @@ def main():
                     obs = compute_errors(h_sim, bl_sim, h_est, bl_est, is_int,
                                          true_traj(h_sim), Ne_est)
 
-                    for key, bins in all_bins.items():
-                        bin_idx = assign_bin(h_sim, bins)
+                    for key in configs:
+                        bin_idx = bin_assignments[key][node_idx]
                         for met, val in obs.items():
                             if not np.isnan(val):
                                 acc[key][model][bin_idx][met].append(val)
+                        if is_int:
+                            acc[key][model][bin_idx]["height_est"].append(h_est)
+                        acc[key][model][bin_idx]["bl_est"].append(bl_est)
+                        acc[key][model][bin_idx]["Ne_est"].append(Ne_est)
+                        acc[key][model][bin_idx]["rate_est"].append(1.0 / Ne_est if Ne_est else np.nan)
 
         print(f"  Processed replicate T{tree_index}", flush=True)
 
@@ -291,15 +324,24 @@ def main():
         output_rows = []
         for model in ("constcoal", "skyline"):
             for bin_idx, (b_lo, b_hi) in enumerate(bins):
+                t_acc = true_acc[(bw, co)][bin_idx]
                 row = {
+                    "scenario":   scenario,
                     "model":      model,
                     "bin_lower":  b_lo,
                     "bin_upper":  b_hi if not np.isinf(b_hi) else np.nan,
-                    "bin_center": (b_lo + co) / 2 if np.isinf(b_hi) else (b_lo + b_hi) / 2,
+                    "bin_center": float(np.median(t_acc["height_sim"])) if t_acc["height_sim"] else (b_lo + b_hi) / 2 if not np.isinf(b_hi) else np.nan,
                     "n_nodes":    n_nodes_per_bin[(bw, co)].get(bin_idx, 0),
                 }
+                # true values (model-independent)
+                for met in TRUE_METRICS:
+                    med, lo, hi = summarize(t_acc.get(met, []))
+                    row[f"{met}_median"]    = med
+                    row[f"{met}_hpd_lower"] = lo
+                    row[f"{met}_hpd_upper"] = hi
+                # estimated values and errors (per model)
                 bin_acc = acc[(bw, co)][model][bin_idx]
-                for met in METRICS:
+                for met in EST_METRICS + METRICS:
                     med, lo, hi = summarize(bin_acc.get(met, []))
                     row[f"{met}_median"]    = med
                     row[f"{met}_hpd_lower"] = lo
