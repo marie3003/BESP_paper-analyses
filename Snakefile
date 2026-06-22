@@ -545,7 +545,7 @@ rule compute_time_bins:
     log:
         "logs/compute_time_bins/{sampling}_{popmodel}_{mutsig}_w{binw}_c{cutoff}.log"
     resources:
-        mem_mb_per_cpu = 16000,
+        mem_mb_per_cpu = 10000,
         runtime = 240,
         cpus_per_task = 1,
     shell:

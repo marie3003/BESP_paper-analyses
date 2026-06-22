@@ -260,7 +260,10 @@ def main():
                     all_Ne_c.append(Ne_c)
 
                 for node_idx, (h_est, bl_est, _, _) in post_dict.items():
-                    h_sim, bl_sim, is_int, _ = sim_dict[node_idx]
+                    h_sim, bl_sim, is_int, node_id = sim_dict[node_idx]
+                    is_root = node_id == "internal_0"
+                    if bl_est < 0:
+                        print(f"WARNING: negative bl_est={bl_est:.6f} node={node_id} rep={tree_index} model={model}")
                     Ne_est = (float(log_row["constant.popSize"]) if model == "constcoal"
                               else skyline_Ne_at(h_sim, sky_b, sky_Ne))
                     obs = compute_errors(
@@ -268,9 +271,10 @@ def main():
                         true_traj(h_sim), Ne_est,
                     )
                     for met in METRICS:
-                        acc[model][node_idx][met].append(obs[met])
+                        val = np.nan if is_root and met.startswith("bl") else obs[met]
+                        acc[model][node_idx][met].append(val)
                     acc[model][node_idx]["height_est"].append(h_est if is_int else np.nan)
-                    acc[model][node_idx]["bl_est"].append(bl_est)
+                    acc[model][node_idx]["bl_est"].append(np.nan if is_root else bl_est)
 
         # Build pop-size summary — subsample to 100 for storage
         rng        = np.random.default_rng(seed=tree_index)
@@ -323,7 +327,7 @@ def main():
                 b_lo = row[f"{model}_bl_est_hpd_lower"]
                 b_hi = row[f"{model}_bl_est_hpd_upper"]
                 row[f"{model}_height_inside_ci"] = bool(h_lo <= h_sim <= h_hi) if is_int else np.nan
-                row[f"{model}_bl_inside_ci"]     = bool(b_lo <= bl_sim <= b_hi)
+                row[f"{model}_bl_inside_ci"]     = np.nan if node_id == "internal_0" else bool(b_lo <= bl_sim <= b_hi)
             output_rows.append(row)
 
         print(f"  Processed replicate T{tree_index} ({len(sim_dict)} nodes)")

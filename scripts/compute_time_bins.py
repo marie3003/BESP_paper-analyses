@@ -314,7 +314,10 @@ def main():
                     Ne_c = float(log_row["constant.popSize"])
 
                 for node_idx, (h_est, bl_est, _, _) in post_dict.items():
-                    h_sim, bl_sim, is_int, _ = sim_dict[node_idx]
+                    h_sim, bl_sim, is_int, node_id = sim_dict[node_idx]
+                    is_root = node_id == "internal_0"
+                    if bl_est < 0:
+                        print(f"WARNING: negative bl_est={bl_est:.6f} node={node_id} rep={tree_index} model={model}")
                     Ne_est = (Ne_c if model == "constcoal"
                               else skyline_Ne_at(h_sim, sky_b, sky_Ne))
                     obs = compute_errors(h_sim, bl_sim, h_est, bl_est, is_int,
@@ -323,17 +326,21 @@ def main():
                     for key in configs:
                         bin_idx = bin_assignments[key][node_idx]
                         for met, val in obs.items():
-                            if not np.isnan(val):
+                            if is_root and met.startswith("bl"):
+                                continue
+                            if not np.isnan(val) and not np.isinf(val):
                                 acc[key][model][bin_idx][met].append(val)
                         if is_int:
                             acc[key][model][bin_idx]["height_est"].append(h_est)
-                        acc[key][model][bin_idx]["bl_est"].append(bl_est)
+                        if not is_root:
+                            acc[key][model][bin_idx]["bl_est"].append(bl_est)
                         acc[key][model][bin_idx]["Ne_est"].append(Ne_est)
                         acc[key][model][bin_idx]["rate_est"].append(1.0 / Ne_est if Ne_est else np.nan)
 
                     if is_int:
                         node_h_est[node_idx].append(h_est)
-                    node_bl_est[node_idx].append(bl_est)
+                    if not is_root:
+                        node_bl_est[node_idx].append(bl_est)
 
             # compute CI coverage per node after all posterior samples are accumulated
             for node_idx, (h_sim, bl_sim, is_int, _) in sim_dict.items():
@@ -344,7 +351,8 @@ def main():
                     if is_int and len(h_vals) >= 2:
                         h_lo, h_hi = hpd(h_vals)
                         ci_acc[key][model][bin_idx]["height_ci"].append(float(h_lo <= h_sim <= h_hi))
-                    if len(bl_vals) >= 2:
+                    is_root = node_id == "internal_0"
+                    if not is_root and len(bl_vals) >= 2:
                         b_lo, b_hi = hpd(bl_vals)
                         ci_acc[key][model][bin_idx]["bl_ci"].append(float(b_lo <= bl_sim <= b_hi))
 
