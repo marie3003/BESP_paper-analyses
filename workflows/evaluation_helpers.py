@@ -5,6 +5,8 @@ from io import StringIO
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.collections import LineCollection
+from matplotlib.container import ErrorbarContainer
 from matplotlib import gridspec
 
 import seaborn as sns
@@ -18,8 +20,16 @@ from pathlib import Path
 import itertools
 from itertools import combinations
 
-from scipy.stats import wilcoxon
-from scipy.stats import norm
+from scipy.stats import norm, gaussian_kde
+
+
+def hpd(vals, credible_mass=0.95):
+    vals = np.sort(vals)
+    n = len(vals)
+    width = int(np.ceil(credible_mass * n))
+    spans = vals[width - 1:] - vals[:n - width + 1]
+    i = np.argmin(spans)
+    return float(vals[i]), float(vals[i + width - 1])
 
 
 def determine_sim_tree_path(row, sim_tree_mapping):
@@ -50,7 +60,7 @@ def assign_model_params(pop_model):
                           "bottleneck_size": None, "bottleneck_start": None, "bottleneck_end": None})
     elif pop_model == "bottleneck":
         return pd.Series({"present_pop_size": 1000, "growth_rate": None,
-                          "bottleneck_size": 10, "bottleneck_start": 10, "bottleneck_end": 13})
+                          "bottleneck_size": 100, "bottleneck_start": 20, "bottleneck_end": 23})
     elif pop_model == "bottleneck20":
         return pd.Series({"present_pop_size": 1000, "growth_rate": None,
                           "bottleneck_size": 20, "bottleneck_start": 10, "bottleneck_end": 13})
@@ -894,18 +904,6 @@ def get_root_height_df_wide(root_height_df):
 
     return root_height_df_wide
 
-def run_wilcoxon_test(root_height_df_wide, sampling, col_to_compare_constcoal, col_to_compare_skyline):
-
-    df = root_height_df_wide[root_height_df_wide["sampling"] == sampling]
-    mutsigs = ['low', 'med', 'high']
-    population_models = ['uniform', 'expgrowthfast', 'expgrowthslow', 'bottleneck']
-
-    for p in population_models:
-        for m in mutsigs:
-            sub_df = df[(df["mutation_signal"] == m) & (df["population_model"] == p)].copy()
-            wilcoxon_result = wilcoxon(x = sub_df[col_to_compare_constcoal], y = sub_df[col_to_compare_skyline])
-            print(f"Wilcoxon test result of {p} population model and with {m} mutation signal of {col_to_compare_constcoal}: {wilcoxon_result}")
-
 def evaluate_ci_overlap(root_height_df_wide, sampling):
 
     def estimate_sigma(lower, upper):
@@ -925,13 +923,13 @@ def evaluate_ci_overlap(root_height_df_wide, sampling):
     root_height_df_wide['population_model'] = pd.Categorical(root_height_df_wide['population_model'], categories=population_models, ordered=True)
 
 
-    root_height_df_wide['sigma_skyline'] = estimate_sigma(root_height_df_wide['height_ci_lower_estimate_skyline'], root_height_df_wide['height_ci_upper_estimate_skyline'])
-    root_height_df_wide['sigma_constcoal'] = estimate_sigma(root_height_df_wide['height_ci_lower_estimate_constcoal'], root_height_df_wide['height_ci_upper_estimate_constcoal'])
+    root_height_df_wide['sigma_skyline'] = estimate_sigma(root_height_df_wide['skyline_height_est_hpd_lower'], root_height_df_wide['skyline_height_est_hpd_upper'])
+    root_height_df_wide['sigma_constcoal'] = estimate_sigma(root_height_df_wide['constcoal_height_est_hpd_lower'], root_height_df_wide['constcoal_height_est_hpd_upper'])
 
     root_height_df_wide['overlap'] = compute_overlap(
-        root_height_df_wide['height_estimate_skyline'],
+        root_height_df_wide['skyline_height_est_median'],
         root_height_df_wide['sigma_skyline'],
-        root_height_df_wide['height_estimate_constcoal'],
+        root_height_df_wide['constcoal_height_est_median'],
         root_height_df_wide['sigma_constcoal']
     )
 
@@ -939,7 +937,9 @@ def evaluate_ci_overlap(root_height_df_wide, sampling):
     return overlaps
 
 
-def plot_ci_coverage_heatmap(root_height_df_wide, title="Root Height CI Coverage"):
+def plot_ci_coverage_heatmap(root_height_df_wide, sampling, title=None,
+                             save_path=None, figsize=None,
+                             cbar_label="Fraction of replicates"):
     """
     For each combination of mutation signal × population model, compute the fraction
     of replicates falling into each of 4 categories:
@@ -947,63 +947,74 @@ def plot_ci_coverage_heatmap(root_height_df_wide, title="Root Height CI Coverage
       - only constcoal inside CI
       - only skyline inside CI
       - neither inside CI
-
-    Produces two plots (one per sampling type), each with 4 heatmaps side by side.
     """
-    mutsig_order = ["low", "med", "high"]
+    mutsig_order    = ["low", "med", "high"]
+    mutsig_labels   = {"low": "Low mut. signal", "med": "Med. mut. signal", "high": "High mut. signal"}
     pop_model_order = ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
-    samplings = ["independenthomochronous", "linearconstant"]
-    categories = ["both", "only constcoal", "only skyline", "neither"]
+    title_map       = {"expgrowthfast": "Exp-growth (fast)", "expgrowthslow": "Exp-growth (slow)",
+                       "uniform": "Uniform", "bottleneck": "Bottleneck"}
 
-    for sampling in samplings:
-        df = root_height_df_wide[root_height_df_wide["sampling"] == sampling].copy()
-        ci_const = df["height_inside_ci_constcoal"].astype(bool)
-        ci_sky   = df["height_inside_ci_skyline"].astype(bool)
-        df["both"]           = ci_const & ci_sky
-        df["only constcoal"] = ci_const & ~ci_sky
-        df["only skyline"]   = ~ci_const & ci_sky
-        df["neither"]        = ~ci_const & ~ci_sky
+    _cmap_colors = ["#b5d2f2", "#7394c2", "#397398", "#80557e", "#d991b4", "#a6444f"]
+    cmap   = plt.matplotlib.colors.LinearSegmentedColormap.from_list("event_cmap", _cmap_colors)
+    cmap_r = cmap.reversed()
 
-        _cmap_colors = ["#b5d2f2", "#7394c2", "#397398", "#80557e", "#d991b4", "#a6444f"]
-        cmap = plt.matplotlib.colors.LinearSegmentedColormap.from_list("event_cmap", _cmap_colors)
-        cmap_r = cmap.reversed()
+    df = root_height_df_wide[root_height_df_wide["sampling"] == sampling].copy()
+    const_col = "constcoal_height_inside_ci" if "constcoal_height_inside_ci" in df.columns else "height_inside_ci_constcoal"
+    sky_col   = "skyline_height_inside_ci"   if "skyline_height_inside_ci"   in df.columns else "height_inside_ci_skyline"
+    ci_const = df[const_col].astype(bool)
+    ci_sky   = df[sky_col].astype(bool)
+    df["both"]           = ci_const & ci_sky
+    df["only constcoal"] = ci_const & ~ci_sky
+    df["only skyline"]   = ~ci_const & ci_sky
+    df["neither"]        = ~ci_const & ~ci_sky
 
-        # --- Contingency heatmaps: one 2×2 per mutsig × popmodel ---
-        fig2, axes2 = plt.subplots(len(mutsig_order), len(pop_model_order),
-                                   figsize=(2.5 * len(pop_model_order), 2.5 * len(mutsig_order)))
+    nrows, ncols = len(mutsig_order), len(pop_model_order)
+    default_figsize = (2.8 * ncols + 1.4, 2.6 * nrows)
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize or default_figsize, squeeze=False)
 
-        for i, mutsig in enumerate(mutsig_order):
-            for j, pop_model in enumerate(pop_model_order):
-                ax = axes2[i, j]
-                subset = df[(df["mutation_signal"] == mutsig) & (df["population_model"] == pop_model)]
-                n = len(subset)
+    for i, mutsig in enumerate(mutsig_order):
+        for j, pop_model in enumerate(pop_model_order):
+            ax = axes[i, j]
+            subset = df[(df["mutation_signal"] == mutsig) & (df["population_model"] == pop_model)]
+            n = len(subset)
 
-                # Build 2×2 matrix: rows = skyline (no on bottom), cols = constcoal
-                matrix = pd.DataFrame(
-                    [[subset["only skyline"].sum(), subset["both"].sum()],
-                     [subset["neither"].sum(), subset["only constcoal"].sum()]],
-                    index=["Skyline ✓", "Skyline ✗"],
-                    columns=["Constcoal ✗", "Constcoal ✓"],
-                    dtype=float
-                ) / max(n, 1)
+            matrix = pd.DataFrame(
+                [[subset["only skyline"].sum(), subset["both"].sum()],
+                 [subset["neither"].sum(),      subset["only constcoal"].sum()]],
+                index=["Skyline ✓", "Skyline ✗"],
+                columns=["Constcoal ✗", "Constcoal ✓"],
+                dtype=float
+            ) / max(n, 1)
 
-                sns.heatmap(matrix, ax=ax, vmin=0, vmax=1, annot=True, fmt=".2f",
-                            cmap=cmap_r, linewidths=0.5, cbar=False)
-                if i == 0: ax.set_title(pop_model, fontsize=9)
-                if j == 0: ax.set_ylabel(f"{mutsig}", fontsize=9)
-                else: ax.set_ylabel("")
-                ax.set_xlabel("")
-                ax.tick_params(labelsize=8)
-                ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
+            annot = (matrix * 100).map(lambda v: f"{v:.0f}%")
+            sns.heatmap(matrix, ax=ax, vmin=0, vmax=1, annot=annot, fmt="",
+                        annot_kws={"fontsize": 11, "fontweight": "bold", "color": "white"},
+                        cmap=cmap_r, linewidths=0.5, cbar=False)
+            ax.set_aspect("equal")
+            if i == 0:
+                ax.set_title(title_map.get(pop_model, pop_model), fontsize=12)
+            if j == 0:
+                ax.set_ylabel(mutsig_labels[mutsig], fontsize=12)
+            else:
+                ax.set_ylabel("")
+            ax.set_xlabel("")
+            ax.tick_params(labelsize=10)
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
+            ax.set_yticklabels(ax.get_yticklabels(), rotation=90, va="center")
 
-        fig2.suptitle(f"{title} — contingency ({sampling})", fontsize=14)
-        plt.tight_layout(rect=[0, 0, 0.92, 1])
-        sm = plt.cm.ScalarMappable(cmap=cmap_r, norm=plt.Normalize(vmin=0, vmax=1))
-        cbar_ax = fig2.add_axes([0.94, 0.15, 0.02, 0.7])
-        cbar = fig2.colorbar(sm, cax=cbar_ax)
-        cbar.set_label("Fraction of replicates", fontsize=9)
-        cbar.ax.tick_params(labelsize=8)
-        plt.show()
+    suptitle = title if title is not None else f"Root height CI coverage — {sampling}"
+    fig.suptitle(suptitle, fontsize=14)
+    plt.tight_layout(rect=[0, 0, 0.91, 0.95])
+    sm      = plt.cm.ScalarMappable(cmap=cmap_r, norm=plt.Normalize(vmin=0, vmax=100))
+    cbar_ax = fig.add_axes([0.91, 0.15, 0.02, 0.65])
+    cbar    = fig.colorbar(sm, cax=cbar_ax)
+    cbar.set_ticks([0, 25, 50, 75, 100])
+    cbar.set_label(cbar_label, fontsize=13)
+    cbar.ax.tick_params(labelsize=12)
+
+    if save_path is not None:
+        fig.savefig(save_path, bbox_inches="tight")
+    plt.show()
 
 
 def plot_ci_coverage_heatmap_nodes(tree_metrics_combined, mode="height", title=None):
@@ -1039,15 +1050,26 @@ def plot_ci_coverage_heatmap_nodes(tree_metrics_combined, mode="height", title=N
     for sampling in samplings:
         df_s = df[df["sampling"] == sampling].copy()
 
-        # Pivot so each row has both constcoal and skyline CI columns
-        constcoal = df_s[df_s["model"] == "constcoal"][
-            ["population_model", "mutation_signal", "tree_index", "node", ci_col]
-        ].rename(columns={ci_col: "ci_constcoal"})
-        skyline = df_s[df_s["model"] == "skyline"][
-            ["population_model", "mutation_signal", "tree_index", "node", ci_col]
-        ].rename(columns={ci_col: "ci_skyline"})
+        prefix_const = f"constcoal_{ci_col}"
+        prefix_sky   = f"skyline_{ci_col}"
 
-        merged = constcoal.merge(skyline, on=["population_model", "mutation_signal", "tree_index", "node"])
+        if prefix_const in df_s.columns and prefix_sky in df_s.columns:
+            # Wide format (new compute_errors.py output)
+            merged = df_s[["population_model", "mutation_signal", "tree_index", "node_id",
+                            prefix_const, prefix_sky]].copy()
+            merged = merged.rename(columns={"node_id": "node",
+                                            prefix_const: "ci_constcoal",
+                                            prefix_sky:   "ci_skyline"})
+        else:
+            # Long format (old tree_metrics_combined)
+            constcoal = df_s[df_s["model"] == "constcoal"][
+                ["population_model", "mutation_signal", "tree_index", "node", ci_col]
+            ].rename(columns={ci_col: "ci_constcoal"})
+            skyline = df_s[df_s["model"] == "skyline"][
+                ["population_model", "mutation_signal", "tree_index", "node", ci_col]
+            ].rename(columns={ci_col: "ci_skyline"})
+            merged = constcoal.merge(skyline, on=["population_model", "mutation_signal", "tree_index", "node"])
+
         merged["ci_constcoal"] = merged["ci_constcoal"].astype(bool)
         merged["ci_skyline"]   = merged["ci_skyline"].astype(bool)
         merged["both"]           = merged["ci_constcoal"] & merged["ci_skyline"]
@@ -1183,16 +1205,19 @@ def plot_population_summary(path_info_df, sampling, x_range=None, title="", y_ra
             constant_all_estimates = subset["coalescent_median"].tolist()
 
             if add_samples:
-                skyline_sample_dfs = subset["skyline_samples"]
+                skyline_sample_dfs   = subset["skyline_samples"]
+                skyline_times_sample_dfs = subset["skyline_times_samples"] if "skyline_times_samples" in subset.columns else None
                 constant_samples = subset["coalescent_samples"]
 
                 for k, samples_df in enumerate(skyline_sample_dfs):
+                    times_df = skyline_times_sample_dfs.iloc[k] if skyline_times_sample_dfs is not None else None
                     for row_index, (l, row) in enumerate(samples_df.iterrows()):
+                        sky_times = list(times_df.iloc[row_index]) if times_df is not None else skyline_all_times[k]
                         plot_population_trajectories_ax(
                             ax,
-                            skyline_times=skyline_all_times[k],
+                            skyline_times=sky_times,
                             skyline_medians=row,
-                            constant_pop_estimate=constant_samples.iloc[k][row_index],
+                            constant_pop_estimate=constant_samples.iloc[k].iloc[row_index],
                             true_traj=true_traj,
                             alpha=0.01,
                             first_plot=False,
@@ -1565,24 +1590,158 @@ def plot_tree_comparison(branch_length_df):
     plt.show()
 
 
+def plot_error_by_mutsig(root_height_df_wide, sampling,
+                         y_col="height_rel_error_median",
+                         y_label=None, y_range=None,
+                         pop_models=None, figsize=None,
+                         title=None, save_path=None,
+                         violin=False):
+    """
+    Four subplots side by side (one per population model). For each mutation
+    signal (low, med, high) two jittered scatter columns are shown — constcoal
+    (blue) and skyline (purple) — with individual replicate values in grey and
+    the per-group median overlaid as a larger coloured dot.
+
+    y_col is the base column name without the model prefix, e.g.
+    'height_rel_error_median'. The function looks up
+    '{model}_{y_col}' in root_height_df_wide.
+    """
+    colors      = {"constcoal": "#397398", "skyline": "#80557e"}
+    labels      = {"constcoal": "Const. coalescent", "skyline": "Skyline"}
+    mutsig_order    = ["low", "med", "high"]
+    mutsig_labels   = {"low": "Low", "med": "Med.", "high": "High"}
+    title_map       = {"expgrowthfast": "Exp-growth (fast)", "expgrowthslow": "Exp-growth (slow)",
+                       "uniform": "Uniform", "bottleneck": "Bottleneck"}
+    pop_model_order = pop_models or ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
+
+    df = root_height_df_wide[root_height_df_wide["sampling"] == sampling].copy()
+
+    # x positions: each mutsig gets a slot of width 1; constcoal left, skyline right
+    offsets = {"constcoal": -0.15, "skyline": 0.15}
+    x_base  = {ms: i for i, ms in enumerate(mutsig_order)}
+
+    ncols = len(pop_model_order)
+    fig, axes = plt.subplots(1, ncols, figsize=figsize or (4.5 * ncols, 4.5), sharey=True)
+    if ncols == 1:
+        axes = [axes]
+
+    rng = np.random.default_rng(42)
+
+    for ax, pop_model in zip(axes, pop_model_order):
+        for model in ("constcoal", "skyline"):
+            col = f"{model}_{y_col}"
+            if col not in df.columns:
+                continue
+            color = colors[model]
+            for ms in mutsig_order:
+                sub = df[(df["population_model"] == pop_model) & (df["mutation_signal"] == ms)].dropna(subset=[col])
+                x_center = x_base[ms] + offsets[model]
+                jitter = rng.uniform(-0.06, 0.06, size=len(sub))
+                xs = x_center + jitter
+                ax.scatter(xs, sub[col].values, color="#aaaaaa", s=15,
+                           alpha=0.8, zorder=2, linewidths=0)
+                vals = sub[col].dropna().values
+                if len(vals) >= 2:
+                    hpd_lo, hpd_hi = hpd(np.sort(vals))
+                    ax.plot([x_center, x_center], [hpd_lo, hpd_hi],
+                            color=color, linewidth=1.5, zorder=3, solid_capstyle="round")
+                    cap = 0.05
+                    ax.plot([x_center - cap, x_center + cap], [hpd_lo, hpd_lo],
+                            color=color, linewidth=1.5, zorder=3)
+                    ax.plot([x_center - cap, x_center + cap], [hpd_hi, hpd_hi],
+                            color=color, linewidth=1.5, zorder=3)
+                    if violin:
+                        kde = gaussian_kde(vals, bw_method=0.4)
+                        ys = np.linspace(hpd_lo, hpd_hi, 200)
+                        xs_kde = kde(ys)
+                        xs_kde = xs_kde / xs_kde.max() * 0.12
+                        ax.fill_betweenx(ys, x_center - xs_kde, x_center + xs_kde,
+                                         color=color, alpha=0.35, zorder=3, linewidth=0)
+                ax.scatter(x_center, sub[col].median(), color=color, s=75,
+                           zorder=4, edgecolors="white", linewidths=0.5)
+
+        ax.set_xticks(range(len(mutsig_order)))
+        ax.set_xticklabels([mutsig_labels[ms] for ms in mutsig_order], fontsize=14)
+        ax.set_xlabel("Mutation signal", fontsize=14)
+        ax.set_title(title_map.get(pop_model, pop_model), fontsize=15)
+        ax.axhline(0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
+        ax.grid(True, color="lightgray", linewidth=0.4, alpha=0.5, zorder=0)
+        ax.tick_params(labelsize=14, labelleft=True)
+        ax.set_ylabel(y_label or y_col, fontsize=15, labelpad=2)
+        if y_range:
+            ax.set_ylim(y_range)
+
+    handles = [plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=c,
+                          markersize=11, label=labels[m])
+               for m, c in colors.items()]
+    fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.99, 0.97),
+               ncol=2, frameon=False, fontsize=14)
+
+    suptitle = title if title is not None else sampling
+    plt.suptitle(suptitle, fontsize=17)
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    plt.subplots_adjust(wspace=0.35)
+
+    if save_path is not None:
+        fig.savefig(save_path, bbox_inches="tight")
+    plt.show()
+
+
 def plot_height_vs_popsize_error(root_height_df_wide, sampling,
-                                  x_col="cum_pop_size_error", y_col="height_diff",
-                                  x_range=None, y_range=None, alpha=0.3, s=10, title=""):
+                                  x_col="pop_diff_median", y_col="height_diff_median",
+                                  x_range=None, y_range=None, alpha=0.6, s=10,
+                                  title=None, x_label=None, y_label=None,
+                                  pop_models=None, mutsigs=None,
+                                  figsize=None, show_zero_lines=True,
+                                  legend_inside=True,
+                                  save_path=None):
     """
     Scatterplot of y_col vs x_col for constcoal and skyline, one subplot per
     population model (columns) × mutation signal (rows), filtered by sampling type.
-    Takes root_height_df_wide as input (output of get_root_height_df_wide).
+    Draws per-replicate HPD intervals as error bars.
+    Column names are expected with model prefix: {model}_{col}_median/hpd_lower/hpd_upper.
+
+    Parameters
+    ----------
+    save_path : str or Path, optional
+        If provided, save figure to this path (PDF/PNG inferred from extension)
+        instead of displaying it.
+    x_label, y_label : str, optional
+        Axis labels; default to the column name.
+    title : str, optional
+        Suptitle; default to sampling type.
+    show_zero_lines : bool
+        Draw dashed zero reference lines on each subplot.
+    figsize : tuple, optional
+        Override default figure size.
     """
     df = root_height_df_wide[root_height_df_wide["sampling"] == sampling].copy()
 
-    mutsig_order = ["low", "med", "high"]
-    growth_model_order = ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
-    title_map = {"expgrowthfast": "Exp-growth fast", "expgrowthslow": "Exp-growth slow",
-                 "uniform": "Uniform", "bottleneck": "Bottleneck"}
-    colors = {"constcoal": "#a6444f", "skyline": "#397398"}
+    mutsig_order       = mutsigs    if mutsigs    is not None else ["low", "med", "high"]
+    growth_model_order = pop_models if pop_models is not None else ["uniform", "expgrowthslow", "expgrowthfast", "bottleneck"]
 
-    fig, axes = plt.subplots(nrows=len(mutsig_order), ncols=len(growth_model_order),
-                             figsize=(5 * len(growth_model_order), 3.5 * len(mutsig_order)))
+    mutsig_labels = {"low": "Low mut. signal", "med": "Med. mut. signal", "high": "High mut. signal"}
+    title_map     = {"expgrowthfast": "Exp-growth (fast)", "expgrowthslow": "Exp-growth (slow)",
+                     "uniform": "Uniform", "bottleneck": "Bottleneck"}
+    legend_labels = {"constcoal": "Const. coalescent", "skyline": "Skyline"}
+    colors        = {"constcoal": "#397398", "skyline": "#80557e"}
+    markers       = {"constcoal": "o",       "skyline": "^"}
+
+    nrows, ncols = len(mutsig_order), len(growth_model_order)
+    default_figsize = (4 * ncols, 3.2 * nrows)
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols,
+                             figsize=figsize or default_figsize,
+                             squeeze=False)
+
+    def _col(model, base):
+        if f"{model}_{base}" in df.columns:
+            return f"{model}_{base}"
+        if f"{base}_{model}" in df.columns:
+            return f"{base}_{model}"
+        return None
+
+    def _lo(base): return base.replace("_median", "_hpd_lower")
+    def _hi(base): return base.replace("_median", "_hpd_upper")
 
     for i, mutsig in enumerate(mutsig_order):
         for j, pop_model in enumerate(growth_model_order):
@@ -1594,24 +1753,92 @@ def plot_height_vs_popsize_error(root_height_df_wide, sampling,
                 continue
 
             for model, color in colors.items():
-                x = subset.get(f"{x_col}_{model}")
-                y = subset.get(f"{y_col}_{model}")
-                if x is not None and y is not None:
-                    ax.scatter(x, y, color=color, alpha=alpha, s=s, label=model)
+                xm_key = _col(model, x_col)
+                ym_key = _col(model, y_col)
+                if xm_key is None or ym_key is None:
+                    continue
 
-            ax.axhline(0, color="gray", linestyle="--", linewidth=0.8)
-            ax.axvline(0, color="gray", linestyle="--", linewidth=0.8)
+                xm = subset[xm_key]
+                ym = subset[ym_key]
+
+                xl_key = _col(model, _lo(x_col))
+                xh_key = _col(model, _hi(x_col))
+                yl_key = _col(model, _lo(y_col))
+                yh_key = _col(model, _hi(y_col))
+
+                has_x_ci = xl_key is not None and xh_key is not None
+                has_y_ci = yl_key is not None and yh_key is not None
+
+                if has_x_ci or has_y_ci:
+                    xerr = ([xm - subset[xl_key], subset[xh_key] - xm] if has_x_ci else None)
+                    yerr = ([ym - subset[yl_key], subset[yh_key] - ym] if has_y_ci else None)
+                    eb = ax.errorbar(xm, ym,
+                                     xerr=xerr, yerr=yerr,
+                                     fmt=markers[model], color=color, ecolor=color,
+                                     elinewidth=0.8, capsize=2, markersize=4,
+                                     label=legend_labels[model])
+                    eb[0].set_alpha(alpha)
+                    for line in eb[1]: line.set_alpha(0.15)
+                    for line in eb[2]: line.set_alpha(0.15)
+                else:
+                    ax.scatter(xm, ym, color=color, marker=markers[model],
+                               alpha=alpha, s=s, label=legend_labels[model])
+
+            ax.grid(True, color="lightgray", linewidth=0.4, alpha=0.5, zorder=0)
+            if show_zero_lines:
+                ax.axhline(0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
+                ax.axvline(0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
             if x_range: ax.set_xlim(x_range)
             if y_range: ax.set_ylim(y_range)
-            ax.set_xlabel(x_col, fontsize=10)
-            if i == 0: ax.set_title(title_map.get(pop_model, pop_model), fontsize=12)
-            if j == 0: ax.set_ylabel(f"{mutsig} mut. signal\n{y_col}", fontsize=10)
+            ax.tick_params(labelsize=13)
 
-    handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=c, markersize=8, label=m)
-               for m, c in colors.items()]
-    fig.legend(handles=handles, loc='upper right', bbox_to_anchor=(0.98, 1.02), ncol=2)
-    plt.suptitle(f"{title} ({sampling})", fontsize=14)
-    plt.tight_layout(rect=[0, 0, 1, 0.97])
+            ax.set_xlabel(x_label or x_col, fontsize=14)
+
+            if i == 0:
+                ax.set_title(title_map.get(pop_model, pop_model), fontsize=15)
+            ax.set_ylabel(y_label or y_col, fontsize=14, labelpad=2)
+            if legend_inside:
+                leg = ax.legend(loc="upper right", frameon=True, fontsize=11,
+                                markerscale=1.2, handletextpad=0.4, borderpad=0.4)
+                leg.get_frame().set_linewidth(0.6)
+                leg.get_frame().set_edgecolor("gray")
+
+    if not legend_inside:
+        handles = []
+        for m, c in colors.items():
+            marker_line = Line2D([0], [0], marker=markers[m], color=c, markersize=9,
+                                 linestyle="none", alpha=1.0)
+            caplines    = (Line2D([0], [0], color=c, linewidth=1.0),
+                           Line2D([0], [0], color=c, linewidth=1.0))
+            barlines    = (LineCollection([[[0, -0.3], [0, 0.3]]], colors=[c], linewidths=[0.8]),
+                           LineCollection([[[-0.3, 0], [0.3, 0]]], colors=[c], linewidths=[0.8]))
+            handle      = ErrorbarContainer((marker_line, caplines, barlines),
+                                            has_xerr=True, has_yerr=True,
+                                            label=legend_labels[m])
+            handles.append(handle)
+        fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.99, 0.97),
+                   ncol=2, frameon=False, fontsize=15, borderpad=0.8, handletextpad=0.6)
+
+    suptitle = title if title is not None else sampling
+    plt.suptitle(suptitle, fontsize=17)
+    plt.tight_layout(rect=[0, 0, 1, 0.94 if not legend_inside else 0.97])
+
+    # Place mutsig labels just left of the ylabel, anchored to its rendered position.
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    inv = fig.transFigure.inverted()
+    for j, mutsig in enumerate(mutsig_order):
+        ax = axes[j][0]
+        ylabel_bb = ax.yaxis.label.get_window_extent(renderer)
+        x_fig = inv.transform((ylabel_bb.x0, ylabel_bb.y0 + ylabel_bb.height / 2))[0]
+        pos = ax.get_position()
+        y_fig = (pos.y0 + pos.y1) / 2
+        fig.text(x_fig - 0.01, y_fig, mutsig_labels.get(mutsig, mutsig),
+                 fontsize=15, ha="center", va="center", rotation=90,
+                 transform=fig.transFigure)
+
+    if save_path is not None:
+        fig.savefig(save_path, bbox_inches="tight")
     plt.show()
 
 def plot_height_errors_by_time_bin(ax, df_sub, t_max, bins=10, bin_width=None, error_col="height_abs_relative_error", x_col = 'height_sim', y_range = None, plot_type = 'box', add_legend = True, skyline_col = "#397398", constcoal_col =  "#a6444f"):
@@ -2999,6 +3226,77 @@ def coalescent_intensity_all_trees(trees_df):
     df["rate_rel_error"]    = df["rate_diff"] / df["rate_true"]
     df["rate_abs_diff"]     = df["rate_diff"].abs()
     df["rate_abs_rel_error"] = df["rate_rel_error"].abs()
+    return df
+
+
+# =============================================================================
+# Loaders for compute_errors.py outputs
+# =============================================================================
+
+def load_pop_summaries(eval_dir):
+    """
+    Read all *_pop_summary.pkl files from eval_dir, concatenate, and merge
+    with the scenario TSVs (high/med/low.tsv) to add population parameters
+    (present_pop_size, growth_rate, bottleneck_size, bottleneck_start,
+    bottleneck_end) per replicate.
+    """
+    eval_dir = Path(eval_dir)
+
+    # Load all pop summaries
+    dfs = []
+    for pkl in sorted(eval_dir.rglob("*_pop_summary.pkl")):
+        dfs.append(pd.read_pickle(pkl))
+    if not dfs:
+        raise FileNotFoundError(f"No *_pop_summary.pkl files found under {eval_dir}")
+    df = pd.concat(dfs, ignore_index=True)
+    df = df.drop(columns=["scenario"], errors="ignore")
+
+    # Load all scenario TSVs and concatenate
+    pop_params_cols = ["sampling", "population_model", "mutation_signal", "tree_index",
+                       "present_pop_size", "growth_rate",
+                       "bottleneck_size", "bottleneck_start", "bottleneck_end"]
+    tsv_dfs = []
+    for tsv in sorted(eval_dir.rglob("*.tsv")):
+        if "node_errors" in tsv.name:
+            continue
+        raw = pd.read_csv(tsv, sep="\t")
+        if not all(c in raw.columns for c in pop_params_cols):
+            continue
+        tsv_dfs.append(raw[pop_params_cols])
+    if tsv_dfs:
+        params_df = pd.concat(tsv_dfs, ignore_index=True).drop_duplicates()
+        df = df.merge(params_df, on=["sampling", "population_model", "mutation_signal", "tree_index"], how="inner")
+
+    return df
+
+
+def load_node_errors(eval_dir):
+    """
+    Read all *_node_errors.tsv files from eval_dir and concatenate into one
+    DataFrame matching the structure of tree_metrics_combined, with separate
+    columns for population_model, mutation_signal, and sampling parsed from
+    the scenario string.
+    """
+    eval_dir = Path(eval_dir)
+    dfs = []
+    for tsv in sorted(eval_dir.rglob("*_node_errors.tsv")):
+        dfs.append(pd.read_csv(tsv, sep="\t"))
+    if not dfs:
+        raise FileNotFoundError(f"No *_node_errors.tsv files found under {eval_dir}")
+    df = pd.concat(dfs, ignore_index=True)
+
+    def parse_scenario(s):
+        mutsig = s.split("_")[-1].replace("mutsig", "")
+        rest   = s[: s.rfind(f"_{mutsig}mutsig")]
+        for sampling in ("independenthomochronous", "linearconstant"):
+            if rest.startswith(sampling):
+                return sampling, rest[len(sampling) + 1:], mutsig
+        return None, rest, mutsig
+
+    parsed = df["scenario"].apply(lambda s: pd.Series(
+        parse_scenario(s), index=["sampling", "population_model", "mutation_signal"]
+    ))
+    df = pd.concat([df.drop(columns=["scenario"]), parsed], axis=1)
     return df
 
 
