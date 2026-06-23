@@ -62,7 +62,7 @@ MUTSIG_SHORT = {"lowmutsig": "low", "medmutsig": "med", "highmutsig": "high"}
 # Time binning configurations per population model
 _CONFIGS_ALL        = [(5, 400), (5, 100), (10, 300)]
 _CONFIGS_NOBOTTLE   = [(10, 100), (20, 200)]
-_CONFIGS_BOTTLE     = [(3, 30), (3, 50), (1, 30)]
+_CONFIGS_BOTTLE     = [(1, 30), (1, 50)]
 
 TIME_BIN_CONFIGS = {
     "uniform":       _CONFIGS_ALL + _CONFIGS_NOBOTTLE,
