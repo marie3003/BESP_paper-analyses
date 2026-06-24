@@ -428,19 +428,21 @@ def main():
             for s in range(len(g_sky_Ne_arr))
         ])  # (N_samples_total, traj_points)
 
+        c_med_traj = float(np.median(g_Ne_c_arr))
+        c_lo_traj, c_hi_traj = hpd(g_Ne_c_arr)
+
         traj_rows = []
         for k, t in enumerate(time_grid):
             sky_vals = sky_at_t[:, k]
             sky_lo, sky_hi = hpd(sky_vals)
-            c_lo, c_hi = hpd(g_Ne_c_arr)
             traj_rows.append({
                 "time":                    t,
                 "skyline_median":          float(np.median(sky_vals)),
                 "skyline_hpd_lower":       float(sky_lo),
                 "skyline_hpd_upper":       float(sky_hi),
-                "constcoal_median":        float(np.median(g_Ne_c_arr)),
-                "constcoal_hpd_lower":     float(c_lo),
-                "constcoal_hpd_upper":     float(c_hi),
+                "constcoal_median":        c_med_traj,
+                "constcoal_hpd_lower":     c_lo_traj,
+                "constcoal_hpd_upper":     c_hi_traj,
             })
 
         pd.DataFrame(traj_rows).to_csv(
