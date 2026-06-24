@@ -188,10 +188,12 @@ def load_log(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tsv",        required=True)
-    parser.add_argument("--out_dir",    required=True)
-    parser.add_argument("--num_groups", type=int, default=10)
-    parser.add_argument("--max_reps",   type=int, default=None)
+    parser.add_argument("--tsv",         required=True)
+    parser.add_argument("--out_dir",     required=True)
+    parser.add_argument("--num_groups",  type=int, default=10)
+    parser.add_argument("--max_reps",    type=int, default=None)
+    parser.add_argument("--traj_points", type=int, default=200,
+                        help="Number of time grid points for population trajectory output")
     args = parser.parse_args()
 
     out_dir     = Path(args.out_dir)
@@ -207,6 +209,11 @@ def main():
     scenario    = f"{row0['sampling']}_{pop_model}_{row0['mutation_signal']}mutsig"
     output_rows  = []
     pop_sum_rows = []
+
+    # Global accumulators across all replicates for trajectory output
+    global_sky_b  = []
+    global_sky_Ne = []
+    global_Ne_c   = []
 
     if args.max_reps is not None:
         scenario_df = scenario_df.head(args.max_reps)
@@ -239,6 +246,10 @@ def main():
         acc = {m: {n: {met: [] for met in METRICS + EXTRA} for n in range(len(sim_dict))}
                for m in ("constcoal", "skyline")}
 
+        # Total branch length per posterior sample
+        tbl_acc = {"constcoal": [], "skyline": []}
+
+
         # Pop-size accumulators for summary output
         all_sky_b  = []
         all_sky_Ne = []
@@ -259,6 +270,10 @@ def main():
                     sky_b  = sky_Ne = None
                     all_Ne_c.append(Ne_c)
 
+                tbl_acc[model].append(
+                    sum(bl for h, bl, _, nid in post_dict.values() if nid != "internal_0")
+                )
+
                 for node_idx, (h_est, bl_est, _, _) in post_dict.items():
                     h_sim, bl_sim, is_int, node_id = sim_dict[node_idx]
                     is_root = node_id == "internal_0"
@@ -276,17 +291,76 @@ def main():
                     acc[model][node_idx]["height_est"].append(h_est if is_int else np.nan)
                     acc[model][node_idx]["bl_est"].append(np.nan if is_root else bl_est)
 
-        # Build pop-size summary — subsample to 100 for storage
-        rng        = np.random.default_rng(seed=tree_index)
+
+        # Feed into global accumulators
+        global_sky_b.extend(all_sky_b)
+        global_sky_Ne.extend(all_sky_Ne)
+        global_Ne_c.extend(all_Ne_c)
+
+        # Build pop-size summary over all posterior samples
         sky_b_arr  = np.array(all_sky_b)
         sky_Ne_arr = np.array(all_sky_Ne)
         Ne_c_arr   = np.array(all_Ne_c)
-        n_keep     = min(100, len(sky_Ne_arr))
-        idx_sky    = rng.choice(len(sky_Ne_arr), size=n_keep, replace=False)
-        idx_c      = rng.choice(len(Ne_c_arr),   size=n_keep, replace=False)
-        sky_b_arr  = sky_b_arr[idx_sky]
-        sky_Ne_arr = sky_Ne_arr[idx_sky]
-        Ne_c_arr   = Ne_c_arr[idx_c]
+
+        sky_lowers = []
+        sky_uppers = []
+        for i in range(sky_Ne_arr.shape[1]):
+            lo, hi = hpd(sky_Ne_arr[:, i])
+            sky_lowers.append(lo)
+            sky_uppers.append(hi)
+
+        c_lo, c_hi = hpd(Ne_c_arr)
+
+        # subsample to 100 for storage of raw samples only
+        rng       = np.random.default_rng(seed=tree_index)
+        n_keep    = min(100, len(sky_Ne_arr))
+        idx_sky   = rng.choice(len(sky_Ne_arr), size=n_keep, replace=False)
+        idx_c     = rng.choice(len(Ne_c_arr),   size=n_keep, replace=False)
+
+        # Simulated total branch length (fixed, not from posterior)
+        tbl_sim = sum(bl for _, bl, _, nid in sim_dict.values() if nid != "internal_0")
+
+        tbl_row = {}
+        for model in ("constcoal", "skyline"):
+            vals = np.array(tbl_acc[model])
+            lo, hi = hpd(vals)
+            tbl_row[f"{model}_total_bl_median"]    = float(np.median(vals))
+            tbl_row[f"{model}_total_bl_hpd_lower"] = float(lo)
+            tbl_row[f"{model}_total_bl_hpd_upper"] = float(hi)
+
+            diff     = vals - tbl_sim
+            rel      = diff / tbl_sim
+            abs_rel  = np.abs(rel)
+            for name, arr in (("total_bl_diff",         diff),
+                               ("total_bl_rel_error",    rel),
+                               ("total_bl_abs_rel_error",abs_rel)):
+                lo, hi = hpd(arr)
+                tbl_row[f"{model}_{name}_median"]    = float(np.median(arr))
+                tbl_row[f"{model}_{name}_hpd_lower"] = float(lo)
+                tbl_row[f"{model}_{name}_hpd_upper"] = float(hi)
+
+            for name, exclude_root, only_internal in (
+                ("bl_rel_error",        True,  False),
+                ("bl_abs_rel_error",    True,  False),
+                ("height_rel_error",    False, True),
+                ("height_abs_rel_error",False, True),
+            ):
+                pool = []
+                for node_idx, (h_sim, bl_sim, is_int, node_id) in sim_dict.items():
+                    is_root = node_id == "internal_0"
+                    if exclude_root and is_root:
+                        continue
+                    if only_internal and not is_int:
+                        continue
+                    vals = [v for v in acc[model][node_idx][name]
+                            if not np.isnan(v) and not np.isinf(v)]
+                    pool.extend(vals)
+                arr = np.array(pool)
+                lo, hi = hpd(arr) if len(arr) >= 2 else (np.nan, np.nan)
+                tbl_row[f"{model}_{name}_median"]    = float(np.median(arr)) if len(arr) else np.nan
+                tbl_row[f"{model}_{name}_hpd_lower"] = float(lo)
+                tbl_row[f"{model}_{name}_hpd_upper"] = float(hi)
+
         pop_sum_rows.append({
             "scenario":               scenario,
             "sampling":               row0["sampling"],
@@ -295,14 +369,15 @@ def main():
             "tree_index":             tree_index,
             "skyline_times":          list(np.median(sky_b_arr, axis=0)),
             "skyline_medians":        list(np.median(sky_Ne_arr, axis=0)),
-            "skyline_lowers":         list(np.percentile(sky_Ne_arr, 2.5, axis=0)),
-            "skyline_uppers":         list(np.percentile(sky_Ne_arr, 97.5, axis=0)),
-            "skyline_samples":        pd.DataFrame(sky_Ne_arr, columns=range(args.num_groups)),
-            "skyline_times_samples":  pd.DataFrame(sky_b_arr,  columns=range(args.num_groups)),
+            "skyline_lowers":         sky_lowers,
+            "skyline_uppers":         sky_uppers,
+            "skyline_samples":        pd.DataFrame(sky_Ne_arr[idx_sky], columns=range(args.num_groups)),
+            "skyline_times_samples":  pd.DataFrame(sky_b_arr[idx_sky],  columns=range(args.num_groups)),
             "coalescent_median":      float(np.median(Ne_c_arr)),
-            "coalescent_lower":       float(np.percentile(Ne_c_arr, 2.5)),
-            "coalescent_upper":       float(np.percentile(Ne_c_arr, 97.5)),
-            "coalescent_samples":     pd.Series(Ne_c_arr),
+            "coalescent_lower":       float(c_lo),
+            "coalescent_upper":       float(c_hi),
+            "coalescent_samples":     pd.Series(Ne_c_arr[idx_c]),
+            **tbl_row,
         })
 
         for node_idx, (h_sim, bl_sim, is_int, node_id) in sim_dict.items():
@@ -337,6 +412,40 @@ def main():
     pop_sum_df = pd.DataFrame(pop_sum_rows)
     with open(out_dir / f"{scenario}_pop_summary.pkl", "wb") as fh:
         pickle.dump(pop_sum_df, fh)
+
+    # Population trajectory: median + HPD at a dense time grid across all replicates
+    if global_sky_Ne:
+        g_sky_b_arr  = np.array(global_sky_b)   # (N_samples_total, num_groups)
+        g_sky_Ne_arr = np.array(global_sky_Ne)   # (N_samples_total, num_groups)
+        g_Ne_c_arr   = np.array(global_Ne_c)     # (N_samples_total,)
+
+        t_max = float(np.percentile(g_sky_b_arr[:, -1], 95))
+        time_grid = np.linspace(0, t_max, args.traj_points)
+
+        # Evaluate skyline Ne at each time point for every sample
+        sky_at_t = np.array([
+            [skyline_Ne_at(t, g_sky_b_arr[s], g_sky_Ne_arr[s]) for t in time_grid]
+            for s in range(len(g_sky_Ne_arr))
+        ])  # (N_samples_total, traj_points)
+
+        traj_rows = []
+        for k, t in enumerate(time_grid):
+            sky_vals = sky_at_t[:, k]
+            sky_lo, sky_hi = hpd(sky_vals)
+            c_lo, c_hi = hpd(g_Ne_c_arr)
+            traj_rows.append({
+                "time":                    t,
+                "skyline_median":          float(np.median(sky_vals)),
+                "skyline_hpd_lower":       float(sky_lo),
+                "skyline_hpd_upper":       float(sky_hi),
+                "constcoal_median":        float(np.median(g_Ne_c_arr)),
+                "constcoal_hpd_lower":     float(c_lo),
+                "constcoal_hpd_upper":     float(c_hi),
+            })
+
+        pd.DataFrame(traj_rows).to_csv(
+            out_dir / f"{scenario}_pop_trajectory.tsv", sep="\t", index=False
+        )
 
     print(f"Done: {scenario} — {len(output_rows)} node-error rows, {len(pop_sum_rows)} pop-summary rows")
 

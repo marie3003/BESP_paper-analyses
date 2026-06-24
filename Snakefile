@@ -88,6 +88,10 @@ rule all:
             f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_pop_summary.pkl",
             sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS
         ),
+        expand(
+            f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_pop_trajectory.tsv",
+            sampling=SAMPLING_TYPES, popmodel=POP_MODELS, mutsig=MUTSIGS
+        ),
         [
             f"{EVAL_DIR}/{sampling}/{popmodel}/{sampling}_{popmodel}_{mutsig}_time_bins_w{int(bw)}_c{int(co)}.tsv"
             for sampling in SAMPLING_TYPES
@@ -509,8 +513,9 @@ rule compute_errors:
         subsampled_skyline_logs     = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.log",     i=range(NREPLICATES)),
         subsampled_skyline_trees    = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.trees",    i=range(NREPLICATES)),
     output:
-        tsv = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_node_errors.tsv",
-        pkl = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_pop_summary.pkl",
+        tsv  = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_node_errors.tsv",
+        pkl  = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_pop_summary.pkl",
+        traj = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_pop_trajectory.tsv",
     log:
         "logs/compute_errors/{sampling}_{popmodel}_{mutsig}.log"
     resources:
@@ -522,6 +527,7 @@ rule compute_errors:
         conda run -n beast_tools python -u scripts/compute_errors.py \
             --tsv {input.tsv} \
             --out_dir $(dirname {output.tsv}) \
+            --traj_points 1000 \
             > {log} 2>&1
         """
 
