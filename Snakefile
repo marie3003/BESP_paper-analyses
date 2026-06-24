@@ -98,6 +98,24 @@ rule all:
             for popmodel in POP_MODELS
             for mutsig in MUTSIGS
             for bw, co in TIME_BIN_CONFIGS[popmodel]
+        ] + [
+            f"{EVAL_DIR}/{sampling}/{popmodel}/{sampling}_{popmodel}_{mutsig}_time_bins_w{int(bw)}_c{int(co)}_per_tree.tsv"
+            for sampling in SAMPLING_TYPES
+            for popmodel in POP_MODELS
+            for mutsig in MUTSIGS
+            for bw, co in TIME_BIN_CONFIGS[popmodel]
+        ] + [
+            f"{EVAL_DIR}/{sampling}/{popmodel}/{sampling}_{popmodel}_{mutsig}_time_bins_w{int(bw)}_c{int(co)}_long_bl.tsv"
+            for sampling in SAMPLING_TYPES
+            for popmodel in POP_MODELS
+            for mutsig in MUTSIGS
+            for bw, co in TIME_BIN_CONFIGS[popmodel]
+        ] + [
+            f"{EVAL_DIR}/{sampling}/{popmodel}/{sampling}_{popmodel}_{mutsig}_time_bins_w{int(bw)}_c{int(co)}_long_bl_per_tree.tsv"
+            for sampling in SAMPLING_TYPES
+            for popmodel in POP_MODELS
+            for mutsig in MUTSIGS
+            for bw, co in TIME_BIN_CONFIGS[popmodel]
         ],
 
 
@@ -544,15 +562,18 @@ rule compute_time_bins:
         subsampled_skyline_logs     = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.log",     i=range(NREPLICATES)),
         subsampled_skyline_trees    = lambda wc: expand(f"{BEAST_DIR}/skyline/{wc.sampling}/{wc.popmodel}/{wc.mutsig}/skyline_{wc.sampling}_{wc.popmodel}_{wc.mutsig}.T{{i}}.subsampled.trees",    i=range(NREPLICATES)),
     output:
-        f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_time_bins_w{{binw}}_c{{cutoff}}.tsv",
+        tsv               = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_time_bins_w{{binw}}_c{{cutoff}}.tsv",
+        per_tree_tsv      = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_time_bins_w{{binw}}_c{{cutoff}}_per_tree.tsv",
+        long_bl_tsv       = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_time_bins_w{{binw}}_c{{cutoff}}_long_bl.tsv",
+        long_bl_per_tree  = f"{EVAL_DIR}/{{sampling}}/{{popmodel}}/{{sampling}}_{{popmodel}}_{{mutsig}}_time_bins_w{{binw}}_c{{cutoff}}_long_bl_per_tree.tsv",
     wildcard_constraints:
         binw   = "|".join(sorted({str(int(bw)) for bw, co in _ALL_CONFIGS}, key=lambda x: -len(x))),
         cutoff = "|".join(sorted({str(int(co)) for bw, co in _ALL_CONFIGS}, key=lambda x: -len(x))),
     log:
         "logs/compute_time_bins/{sampling}_{popmodel}_{mutsig}_w{binw}_c{cutoff}.log"
     resources:
-        mem_mb_per_cpu = 10000,
-        runtime = 240,
+        mem_mb_per_cpu = 16000,
+        runtime = 360,
         cpus_per_task = 1,
     shell:
         """
