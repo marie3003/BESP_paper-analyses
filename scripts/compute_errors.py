@@ -419,8 +419,7 @@ def main():
         g_sky_Ne_arr = np.array(global_sky_Ne)   # (N_samples_total, num_groups)
         g_Ne_c_arr   = np.array(global_Ne_c)     # (N_samples_total,)
 
-        t_max = float(np.percentile(g_sky_b_arr[:, -1], 95))
-        time_grid = np.linspace(0, t_max, args.traj_points)
+        time_grid = np.linspace(0, 500, args.traj_points)
 
         # Evaluate skyline Ne at each time point for every sample
         sky_at_t = np.array([
