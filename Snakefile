@@ -579,7 +579,7 @@ rule compute_time_bins:
         """
         conda run -n beast_tools python -u scripts/compute_time_bins.py \
             --tsv {input.tsv} \
-            --out_dir $(dirname {output}) \
+            --out_dir $(dirname {output.tsv}) \
             --config {wildcards.binw},{wildcards.cutoff} \
             > {log} 2>&1
         """
