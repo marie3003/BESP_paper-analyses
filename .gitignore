@@ -43,7 +43,16 @@ results/run1/simulated_data/**/*_snps.fasta
 results/run1/simulated_data_test/
 results/run_bottleneck/beast_inference/
 results/run_bottleneck/simulated_data/
-results/run1/simulated_data/
+results/run1/evaluation/
+results/run1/simulated_data/*/expgrowthfast/expgrowthfast_*
+results/run1/simulated_data/*/expgrowthfast/expgrowthfast.traj
+results/run1/simulated_data/*/expgrowthslow/expgrowthslow.traj
+results/run1/simulated_data/*/uniform/uniform.traj
+results/run1/simulated_data/*/bottleneck/bottleneck_*
+results/run1/simulated_data/*/bottleneck/bottleneck.traj
 
 benchmarks/
 results/run1/beast_inference/
+results/run1/df_pop_info.pkl
+results/run_bottleneck/df_pop_info.pkl
+snakemake.log
