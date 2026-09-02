@@ -2,6 +2,7 @@
 # Checks ESS (cutoff = 200) for every non-empty *.subsampled.log file under
 # a BEAST_DIR, to confirm that subsampling to ~1000 samples didn't drop ESS
 # below the threshold used in the original make_summary_tree ESS check.
+# Mirrors the ESS check in the Snakefile's make_summary_tree rule exactly.
 #
 # Usage:
 #   Rscript scripts/check_subsampled_ess.R <beast_dir> <output_tsv>
@@ -29,8 +30,6 @@ results <- data.frame(
   file       = character(0),
   size_bytes = integer(0),
   status     = character(0),
-  n_low_ess  = integer(0),
-  min_ess    = numeric(0),
   low_params = character(0),
   stringsAsFactors = FALSE
 )
@@ -40,30 +39,24 @@ for (f in log_files) {
   if (is.na(sz) || sz == 0) {
     results <- rbind(results, data.frame(
       file = f, size_bytes = 0, status = "empty (ESS failed upstream)",
-      n_low_ess = NA, min_ess = NA, low_params = NA
+      low_params = NA
     ))
     next
   }
 
   status <- tryCatch({
     mcmc <- readLog(f, burnin = 0)
-    ess_vals <- coda::effectiveSize(mcmc)
     low <- checkESS(mcmc, cutoff = 200, value = TRUE)
     list(
       status = if (length(low) > 0) "FAIL" else "PASS",
-      n_low_ess = length(low),
-      min_ess = min(ess_vals),
       low_params = if (length(low) > 0) paste(names(low), collapse = ";") else ""
     )
   }, error = function(e) {
-    list(status = paste("ERROR:", conditionMessage(e)),
-         n_low_ess = NA, min_ess = NA, low_params = NA)
+    list(status = paste("ERROR:", conditionMessage(e)), low_params = NA)
   })
 
   results <- rbind(results, data.frame(
-    file = f, size_bytes = sz, status = status$status,
-    n_low_ess = status$n_low_ess, min_ess = status$min_ess,
-    low_params = status$low_params
+    file = f, size_bytes = sz, status = status$status, low_params = status$low_params
   ))
 }
 
