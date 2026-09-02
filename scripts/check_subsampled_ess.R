@@ -47,7 +47,7 @@ for (f in log_files) {
 
   status <- tryCatch({
     mcmc <- readLog(f, burnin = 0)
-    ess_vals <- effectiveSize(mcmc)
+    ess_vals <- coda::effectiveSize(mcmc)
     low <- checkESS(mcmc, cutoff = 200, value = TRUE)
     list(
       status = if (length(low) > 0) "FAIL" else "PASS",
