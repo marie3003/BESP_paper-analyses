@@ -194,6 +194,10 @@ def main():
     parser.add_argument("--max_reps",    type=int, default=None)
     parser.add_argument("--traj_points", type=int, default=200,
                         help="Number of time grid points for population trajectory output")
+    parser.add_argument("--log_suffix",   default="subsampled",
+                        help="Suffix used in place of 'combined' for log files, e.g. 'subsampled_v2'")
+    parser.add_argument("--trees_suffix", default="subsampled",
+                        help="Suffix used in place of 'combined' for trees files, e.g. 'subsampled_v2'")
     args = parser.parse_args()
 
     out_dir     = Path(args.out_dir)
@@ -231,8 +235,8 @@ def main():
         model_data = {}
         skip = False
         for model in ("constcoal", "skyline"):
-            tp = rep_row[f"trees_path_{model}"].replace(".combined.trees", ".subsampled.trees")
-            lp = rep_row[f"log_path_{model}"].replace(".combined.log",     ".subsampled.log")
+            tp = rep_row[f"trees_path_{model}"].replace(".combined.trees", f".{args.trees_suffix}.trees")
+            lp = rep_row[f"log_path_{model}"].replace(".combined.log",     f".{args.log_suffix}.log")
             if not Path(tp).exists() or Path(tp).stat().st_size == 0:
                 skip = True; break
             log   = load_log(lp)
