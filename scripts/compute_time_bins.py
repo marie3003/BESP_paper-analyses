@@ -207,6 +207,10 @@ def main():
                         help="Single bin_width,cutoff pair e.g. '10,400'")
     parser.add_argument("--num_groups", type=int, default=10)
     parser.add_argument("--max_reps",   type=int, default=None)
+    parser.add_argument("--log_suffix",   default="subsampled",
+                        help="Suffix used in place of 'combined' for log files, e.g. 'combined' to use full chain")
+    parser.add_argument("--trees_suffix", default="subsampled",
+                        help="Suffix used in place of 'combined' for trees files, e.g. 'combined' to use full chain")
     args = parser.parse_args()
 
     bw, co = args.config.split(",")
@@ -326,8 +330,8 @@ def main():
         paths = {}
         skip = False
         for model in ("constcoal", "skyline"):
-            tp = rep_row[f"trees_path_{model}"].replace(".combined.trees", ".subsampled.trees")
-            lp = rep_row[f"log_path_{model}"].replace(".combined.log",     ".subsampled.log")
+            tp = rep_row[f"trees_path_{model}"].replace(".combined.trees", f".{args.trees_suffix}.trees")
+            lp = rep_row[f"log_path_{model}"].replace(".combined.log",     f".{args.log_suffix}.log")
             if not Path(tp).exists() or Path(tp).stat().st_size == 0:
                 skip = True; break
             paths[model] = (tp, lp)
