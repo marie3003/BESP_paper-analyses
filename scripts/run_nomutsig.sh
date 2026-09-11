@@ -11,4 +11,4 @@ module load gcc/12.2.0
 module load beast1/1.10.4
 module load libbeagle/3.1.2
 
-beast -overwrite -seed 44 constcoal_linearconstant_bottleneck_nomutsig.T86.xml
+beast -overwrite -seed 44 constcoal_linearconstant_uniform_nomutsig.T86.xml
