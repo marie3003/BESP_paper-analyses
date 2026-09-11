@@ -2732,6 +2732,412 @@ def plot_single_tree_errors(df, sampling, tree_index,
     plt.show()
 
 
+def plot_full_vs_subsampled_grid(df_sub, df_full, job_stats, error_col, mode="median",
+                                  sampling="linearconstant",
+                                  pop_models=None, mutsigs=None,
+                                  merge_key="node_idx", figsize=None, title=None,
+                                  legend_inside=True):
+    """
+    Grid of scatter plots (one subplot per popmodel x mutsig scenario)
+    comparing a node-error metric between a subsampled (e.g. 1000-sample)
+    and a full-chain (e.g. ~27000-sample) result, for the specific
+    tree_index used in each scenario's single-tree full-chain test.
+    Both constcoal and skyline are plotted together in each subplot,
+    colored as in plot_height_vs_popsize_error.
+
+    Parameters
+    ----------
+    df_sub, df_full : pd.DataFrame
+        Node-error dataframes in the wide format produced by
+        load_node_errors (one row per node, columns like
+        f"{model}_{metric}_median" / "_hpd_lower" / "_hpd_upper").
+    job_stats : str or Path or pd.DataFrame
+        Path to (or already-loaded) the job_stats.tsv written after the
+        single-tree full-chain runs — must have columns
+        popmodel, mutsig, tree_index (and sampling, matched against
+        the `sampling` argument).
+    error_col : str
+        Metric name without the model prefix, e.g. "bl_rel_error" or "pop_diff".
+        Looked up as f"{model}_{error_col}_median"/"_hpd_lower"/"_hpd_upper".
+    mode : "median" or "hpd_width"
+        "median" compares point-estimate medians; "hpd_width" compares
+        HPD interval widths (hpd_upper - hpd_lower).
+    sampling : str
+        Sampling type to filter both dataframes to (job_stats rows are
+        also filtered to this sampling).
+    pop_models, mutsigs : list, optional
+        Subsets to plot; default all popmodels found in job_stats and
+        ["low", "med", "high"].
+    """
+    if isinstance(job_stats, (str, Path)):
+        job_stats = pd.read_csv(job_stats, sep="\t")
+    job_stats = job_stats[job_stats["sampling"] == sampling]
+
+    mutsig_order = mutsigs if mutsigs is not None else ["low", "med", "high"]
+    popmodel_order = pop_models if pop_models is not None else sorted(job_stats["popmodel"].unique())
+
+    title_map     = {"expgrowthfast": "Exp. Growth (fast)", "expgrowthslow": "Exp. Growth (slow)",
+                     "uniform": "Uniform", "bottleneck": "Bottleneck"}
+    legend_labels = {"constcoal": "Const. coal.", "skyline": "Skyline"}
+    colors        = {"constcoal": "#397398", "skyline": "#80557e"}
+    markers       = {"constcoal": "o",       "skyline": "^"}
+
+    nrows, ncols = len(mutsig_order), len(popmodel_order)
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize or (4 * ncols, 3.5 * nrows), squeeze=False)
+
+    for i, mutsig in enumerate(mutsig_order):
+        for j, popmodel in enumerate(popmodel_order):
+            ax = axes[i, j]
+
+            row = job_stats[(job_stats["popmodel"] == popmodel) & (job_stats["mutsig"] == mutsig)]
+            if row.empty:
+                ax.set_visible(False)
+                continue
+            tree_index = int(row.iloc[0]["tree_index"])
+
+            def _select(df):
+                return df[(df["sampling"] == sampling) &
+                          (df["population_model"] == popmodel) &
+                          (df["mutation_signal"] == mutsig) &
+                          (df["tree_index"] == tree_index)]
+
+            sub_rows, full_rows = _select(df_sub), _select(df_full)
+
+            all_vals = []
+            for model in ("constcoal", "skyline"):
+                med_col = f"{model}_{error_col}_median"
+                lo_col  = f"{model}_{error_col}_hpd_lower"
+                hi_col  = f"{model}_{error_col}_hpd_upper"
+
+                sub = sub_rows[[merge_key, med_col, lo_col, hi_col]].rename(
+                    columns={med_col: "median_sub", lo_col: "lo_sub", hi_col: "hi_sub"})
+                full = full_rows[[merge_key, med_col, lo_col, hi_col]].rename(
+                    columns={med_col: "median_full", lo_col: "lo_full", hi_col: "hi_full"})
+                m = sub.merge(full, on=merge_key).dropna()
+
+                if mode == "median":
+                    x, y = m["median_full"], m["median_sub"]
+                    axis_label = f"{error_col} median"
+                elif mode == "hpd_width":
+                    x = m["hi_full"] - m["lo_full"]
+                    y = m["hi_sub"]  - m["lo_sub"]
+                    axis_label = f"{error_col} HPD width"
+                else:
+                    raise ValueError("mode must be 'median' or 'hpd_width'")
+
+                ax.scatter(x, y, alpha=0.7, s=18, color=colors[model], marker=markers[model],
+                           label=legend_labels[model])
+                all_vals.extend(list(x) + list(y))
+
+            if all_vals:
+                lo, hi = min(all_vals), max(all_vals)
+                pad = (hi - lo) * 0.05 if hi > lo else 1
+                lims = [lo - pad, hi + pad]
+                ax.plot(lims, lims, "--", color="gray", linewidth=1, zorder=0)
+                ax.set_xlim(lims); ax.set_ylim(lims)
+
+            if i == 0:
+                ax.set_title(f"{title_map.get(popmodel, popmodel)} (T{tree_index})", fontsize=10)
+            ylabel = f"{axis_label} (subsampled)"
+            if j == 0:
+                ylabel = f"{mutsig} mut. signal\n{ylabel}"
+            ax.set_ylabel(ylabel, fontsize=9)
+            ax.set_xlabel(f"{axis_label} (full chain)", fontsize=9)
+            ax.tick_params(labelsize=8)
+
+    if legend_inside:
+        axes[0, -1].legend(loc="upper left", fontsize=8, framealpha=0.9)
+    else:
+        handles = [plt.Line2D([0], [0], marker=markers[m], color="w", markerfacecolor=colors[m],
+                               markersize=7, label=legend_labels[m]) for m in ("constcoal", "skyline")]
+        fig.legend(handles=handles, loc="upper right", fontsize=9)
+
+    plt.suptitle(title or f"{error_col} — {mode} comparison ({sampling})", fontsize=13)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
+
+
+def plot_full_vs_subsampled_median_hpd(df_sub, df_full, job_stats, error_col,
+                                        sampling="linearconstant",
+                                        pop_models=None, mutsigs=None,
+                                        merge_key="node_idx", figsize=None, title=None,
+                                        legend_inside=True, alpha=0.6, s=10,
+                                        show_zero_lines=True):
+    """
+    Grid of scatter plots (one subplot per popmodel x mutsig scenario)
+    plotting the full-chain median against the subsampled median for a
+    node-error metric, with each point's HPD interval drawn as error bars
+    (x error = full-chain HPD, y error = subsampled HPD). Both constcoal
+    and skyline are shown together, colored as in plot_height_vs_popsize_error.
+
+    Parameters
+    ----------
+    df_sub, df_full : pd.DataFrame
+        Node-error dataframes in the wide format produced by
+        load_node_errors (one row per node, columns like
+        f"{model}_{metric}_median" / "_hpd_lower" / "_hpd_upper").
+    job_stats : str or Path or pd.DataFrame
+        Path to (or already-loaded) job_stats.tsv with columns
+        popmodel, mutsig, tree_index, sampling.
+    error_col : str
+        Metric name without the model prefix, e.g. "bl_rel_error" or "pop_diff".
+    pop_models, mutsigs : list, optional
+        Subsets to plot; default all popmodels found in job_stats and
+        ["low", "med", "high"].
+    """
+    if isinstance(job_stats, (str, Path)):
+        job_stats = pd.read_csv(job_stats, sep="\t")
+    job_stats = job_stats[job_stats["sampling"] == sampling]
+
+    mutsig_order = mutsigs if mutsigs is not None else ["low", "med", "high"]
+    popmodel_order = pop_models if pop_models is not None else sorted(job_stats["popmodel"].unique())
+
+    title_map     = {"expgrowthfast": "Exp. Growth (fast)", "expgrowthslow": "Exp. Growth (slow)",
+                     "uniform": "Uniform", "bottleneck": "Bottleneck"}
+    legend_labels = {"constcoal": "Const. coal.", "skyline": "Skyline"}
+    colors        = {"constcoal": "#397398", "skyline": "#80557e"}
+    markers       = {"constcoal": "o",       "skyline": "^"}
+
+    nrows, ncols = len(mutsig_order), len(popmodel_order)
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize or (4 * ncols, 3.5 * nrows), squeeze=False)
+
+    for i, mutsig in enumerate(mutsig_order):
+        for j, popmodel in enumerate(popmodel_order):
+            ax = axes[i, j]
+
+            row = job_stats[(job_stats["popmodel"] == popmodel) & (job_stats["mutsig"] == mutsig)]
+            if row.empty:
+                ax.set_visible(False)
+                continue
+            tree_index = int(row.iloc[0]["tree_index"])
+
+            def _select(df):
+                return df[(df["sampling"] == sampling) &
+                          (df["population_model"] == popmodel) &
+                          (df["mutation_signal"] == mutsig) &
+                          (df["tree_index"] == tree_index)]
+
+            sub_rows, full_rows = _select(df_sub), _select(df_full)
+            all_vals = []
+
+            for model in ("constcoal", "skyline"):
+                med_col = f"{model}_{error_col}_median"
+                lo_col  = f"{model}_{error_col}_hpd_lower"
+                hi_col  = f"{model}_{error_col}_hpd_upper"
+
+                sub = sub_rows[[merge_key, med_col, lo_col, hi_col]].rename(
+                    columns={med_col: "median_sub", lo_col: "lo_sub", hi_col: "hi_sub"})
+                full = full_rows[[merge_key, med_col, lo_col, hi_col]].rename(
+                    columns={med_col: "median_full", lo_col: "lo_full", hi_col: "hi_full"})
+                m = sub.merge(full, on=merge_key).dropna()
+                if m.empty:
+                    continue
+
+                x, y = m["median_full"], m["median_sub"]
+                xerr = [x - m["lo_full"], m["hi_full"] - x]
+                yerr = [y - m["lo_sub"],  m["hi_sub"]  - y]
+
+                eb = ax.errorbar(x, y, xerr=xerr, yerr=yerr,
+                                  fmt=markers[model], color=colors[model], ecolor=colors[model],
+                                  elinewidth=0.8, capsize=2, markersize=4,
+                                  label=legend_labels[model])
+                eb[0].set_alpha(alpha)
+                for line in eb[1]: line.set_alpha(0.15)
+                for line in eb[2]: line.set_alpha(0.15)
+
+                all_vals.extend(list(m["lo_full"]) + list(m["hi_full"]) +
+                                 list(m["lo_sub"])  + list(m["hi_sub"]))
+
+            if all_vals:
+                lo, hi = min(all_vals), max(all_vals)
+                pad = (hi - lo) * 0.05 if hi > lo else 1
+                lims = [lo - pad, hi + pad]
+                ax.plot(lims, lims, "--", color="gray", linewidth=1, zorder=0)
+                ax.set_xlim(lims); ax.set_ylim(lims)
+
+            ax.grid(True, color="lightgray", linewidth=0.4, alpha=0.5, zorder=0)
+            if show_zero_lines:
+                ax.axhline(0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
+                ax.axvline(0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
+
+            if i == 0:
+                ax.set_title(f"{title_map.get(popmodel, popmodel)} (T{tree_index})", fontsize=10)
+            ylabel = f"{error_col} median (subsampled)"
+            if j == 0:
+                ylabel = f"{mutsig} mut. signal\n{ylabel}"
+            ax.set_ylabel(ylabel, fontsize=9)
+            ax.set_xlabel(f"{error_col} median (full chain)", fontsize=9)
+            ax.tick_params(labelsize=8)
+
+            if legend_inside and i == 0 and j == ncols - 1:
+                leg = ax.legend(loc="upper left", frameon=True, fontsize=8,
+                                 markerscale=1.2, handletextpad=0.4, borderpad=0.4)
+                leg.get_frame().set_linewidth(0.6)
+                leg.get_frame().set_edgecolor("gray")
+
+    if not legend_inside:
+        handles = [plt.Line2D([0], [0], marker=markers[m], color="w", markerfacecolor=colors[m],
+                               markersize=7, label=legend_labels[m]) for m in ("constcoal", "skyline")]
+        fig.legend(handles=handles, loc="upper right", fontsize=9)
+
+    plt.suptitle(title or f"{error_col} — median with HPD comparison ({sampling})", fontsize=13)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
+
+
+def plot_full_vs_subsampled_popsize_median_hpd(sub_eval_dir, full_eval_dir, job_stats,
+                                                sampling="linearconstant",
+                                                pop_models=None, mutsigs=None,
+                                                figsize=None, title=None,
+                                                legend_inside=True, alpha=0.6,
+                                                sub_path_template=None, full_path_template=None):
+    """
+    Grid of scatter plots (one subplot per popmodel x mutsig scenario)
+    comparing population-size estimates from *_pop_summary.pkl files between
+    a subsampled and a full-chain run, for the tree_index used in each
+    scenario's single-tree full-chain test. Full-chain median on x, subsampled
+    median on y, with each point's HPD interval drawn as error bars.
+
+    Skyline contributes one point per time-group (skyline_medians/lowers/uppers
+    are lists of length num_groups, matched positionally by group index between
+    the two runs); const. coalescent contributes a single point
+    (coalescent_median/lower/upper, one value per replicate).
+
+    Parameters
+    ----------
+    sub_eval_dir : str or Path
+        Root of the subsampled (baseline) evaluation directory, e.g.
+        "results/run1/evaluation" (pkl at
+        {sub_eval_dir}/{sampling}/{popmodel}/{sampling}_{popmodel}_{mutsig}mutsig_pop_summary.pkl).
+    full_eval_dir : str or Path
+        Root of the full-chain single-tree test directory, e.g.
+        "results/run1/single_tree_full_chain_test" (pkl at
+        {full_eval_dir}/{popmodel}/{mutsig}/{sampling}_{popmodel}_{mutsig}mutsig_pop_summary.pkl).
+    job_stats : str or Path or pd.DataFrame
+        Path to (or already-loaded) job_stats.tsv with columns
+        popmodel, mutsig, tree_index, sampling.
+    sub_path_template, full_path_template : str, optional
+        Override the default path templates above; formatted with
+        sampling, popmodel, mutsig (short form, e.g. "high").
+    pop_models, mutsigs : list, optional
+        Subsets to plot; default all popmodels found in job_stats and
+        ["low", "med", "high"].
+    """
+    if isinstance(job_stats, (str, Path)):
+        job_stats = pd.read_csv(job_stats, sep="\t")
+    job_stats = job_stats[job_stats["sampling"] == sampling]
+
+    mutsig_order = mutsigs if mutsigs is not None else ["low", "med", "high"]
+    popmodel_order = pop_models if pop_models is not None else sorted(job_stats["popmodel"].unique())
+
+    title_map     = {"expgrowthfast": "Exp. Growth (fast)", "expgrowthslow": "Exp. Growth (slow)",
+                     "uniform": "Uniform", "bottleneck": "Bottleneck"}
+    legend_labels = {"constcoal": "Const. coal.", "skyline": "Skyline"}
+    colors        = {"constcoal": "#397398", "skyline": "#80557e"}
+    markers       = {"constcoal": "o",       "skyline": "^"}
+
+    sub_tpl  = sub_path_template  or "{sub_eval_dir}/{sampling}/{popmodel}/{sampling}_{popmodel}_{mutsig}mutsig_pop_summary.pkl"
+    full_tpl = full_path_template or "{full_eval_dir}/{popmodel}/{mutsig}/{sampling}_{popmodel}_{mutsig}mutsig_pop_summary.pkl"
+
+    nrows, ncols = len(mutsig_order), len(popmodel_order)
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize or (4 * ncols, 3.5 * nrows), squeeze=False)
+
+    for i, mutsig in enumerate(mutsig_order):
+        for j, popmodel in enumerate(popmodel_order):
+            ax = axes[i, j]
+
+            row = job_stats[(job_stats["popmodel"] == popmodel) & (job_stats["mutsig"] == mutsig)]
+            if row.empty:
+                ax.set_visible(False)
+                continue
+            tree_index = int(row.iloc[0]["tree_index"])
+
+            sub_path = Path(sub_tpl.format(sub_eval_dir=sub_eval_dir, sampling=sampling,
+                                            popmodel=popmodel, mutsig=mutsig))
+            full_path = Path(full_tpl.format(full_eval_dir=full_eval_dir, sampling=sampling,
+                                              popmodel=popmodel, mutsig=mutsig))
+            if not sub_path.exists() or not full_path.exists():
+                ax.set_visible(False)
+                continue
+
+            sub_df  = pd.read_pickle(sub_path)
+            full_df = pd.read_pickle(full_path)
+            sub_row  = sub_df[sub_df["tree_index"]  == tree_index]
+            full_row = full_df[full_df["tree_index"] == tree_index]
+            if sub_row.empty or full_row.empty:
+                ax.set_visible(False)
+                continue
+            sub_row, full_row = sub_row.iloc[0], full_row.iloc[0]
+
+            all_vals = []
+
+            # skyline: one point per time-group, matched by group index
+            sky_med_sub,  sky_lo_sub,  sky_hi_sub  = sub_row["skyline_medians"],  sub_row["skyline_lowers"],  sub_row["skyline_uppers"]
+            sky_med_full, sky_lo_full, sky_hi_full = full_row["skyline_medians"], full_row["skyline_lowers"], full_row["skyline_uppers"]
+            n_groups = min(len(sky_med_sub), len(sky_med_full))
+
+            x = np.array(sky_med_full[:n_groups])
+            y = np.array(sky_med_sub[:n_groups])
+            xerr = [x - np.array(sky_lo_full[:n_groups]), np.array(sky_hi_full[:n_groups]) - x]
+            yerr = [y - np.array(sky_lo_sub[:n_groups]),  np.array(sky_hi_sub[:n_groups])  - y]
+
+            eb = ax.errorbar(x, y, xerr=xerr, yerr=yerr,
+                              fmt=markers["skyline"], color=colors["skyline"], ecolor=colors["skyline"],
+                              elinewidth=1.5, capsize=3, markersize=8, label=legend_labels["skyline"])
+            eb[0].set_alpha(alpha)
+            for line in eb[1]: line.set_alpha(0.5)
+            for line in eb[2]: line.set_alpha(0.5)
+            all_vals.extend(list(sky_lo_full[:n_groups]) + list(sky_hi_full[:n_groups]) +
+                             list(sky_lo_sub[:n_groups])  + list(sky_hi_sub[:n_groups]))
+
+            # const. coalescent: single point
+            xc, yc = full_row["coalescent_median"], sub_row["coalescent_median"]
+            xcerr = [[xc - full_row["coalescent_lower"]], [full_row["coalescent_upper"] - xc]]
+            ycerr = [[yc - sub_row["coalescent_lower"]],  [sub_row["coalescent_upper"]  - yc]]
+
+            eb = ax.errorbar([xc], [yc], xerr=xcerr, yerr=ycerr,
+                              fmt=markers["constcoal"], color=colors["constcoal"], ecolor=colors["constcoal"],
+                              elinewidth=1.5, capsize=3, markersize=9, label=legend_labels["constcoal"])
+            eb[0].set_alpha(alpha)
+            for line in eb[1]: line.set_alpha(0.5)
+            for line in eb[2]: line.set_alpha(0.5)
+            all_vals.extend([full_row["coalescent_lower"], full_row["coalescent_upper"],
+                              sub_row["coalescent_lower"],  sub_row["coalescent_upper"]])
+
+            if all_vals:
+                lo, hi = min(all_vals), max(all_vals)
+                pad = (hi - lo) * 0.05 if hi > lo else 1
+                lims = [lo - pad, hi + pad]
+                ax.plot(lims, lims, "--", color="gray", linewidth=1, zorder=0)
+                ax.set_xlim(lims); ax.set_ylim(lims)
+
+            ax.grid(True, color="lightgray", linewidth=0.4, alpha=0.5, zorder=0)
+
+            if i == 0:
+                ax.set_title(f"{title_map.get(popmodel, popmodel)} (T{tree_index})", fontsize=10)
+            ylabel = "Pop. size median (subsampled)"
+            if j == 0:
+                ylabel = f"{mutsig} mut. signal\n{ylabel}"
+            ax.set_ylabel(ylabel, fontsize=9)
+            ax.set_xlabel("Pop. size median (full chain)", fontsize=9)
+            ax.tick_params(labelsize=8)
+
+            if legend_inside and i == 0 and j == ncols - 1:
+                leg = ax.legend(loc="upper left", frameon=True, fontsize=8,
+                                 markerscale=1.2, handletextpad=0.4, borderpad=0.4)
+                leg.get_frame().set_linewidth(0.6)
+                leg.get_frame().set_edgecolor("gray")
+
+    if not legend_inside:
+        handles = [plt.Line2D([0], [0], marker=markers[m], color="w", markerfacecolor=colors[m],
+                               markersize=7, label=legend_labels[m]) for m in ("constcoal", "skyline")]
+        fig.legend(handles=handles, loc="upper right", fontsize=9)
+
+    plt.suptitle(title or f"Population size — median with HPD comparison ({sampling})", fontsize=13)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
+
+
 def plot_bl_vs_popsize_error_timecoloring(df, sampling, bin_width=50, time_col="height_sim",
                                          pop_error_col="rel_diff_pop_size", bl_error_col="bl_relative_error",
                                          x_range=None, y_range=None, show_errorbars=True,
@@ -3825,6 +4231,41 @@ def load_node_errors(eval_dir):
     ))
     df = pd.concat([df.drop(columns=["scenario"]), parsed], axis=1)
     return df
+
+
+def melt_node_errors(df, metrics=("pop_diff", "bl_rel_error"),
+                      models=("constcoal", "skyline"),
+                      id_cols=("sampling", "population_model", "mutation_signal",
+                               "tree_index", "node_idx", "node_id", "internal",
+                               "height_sim", "bl_sim")):
+    """
+    Reshape a wide node_errors dataframe (from load_node_errors) into long
+    format expected by plot_single_tree_errors: one row per (node, model),
+    with a "model" column and flat metric columns (+ "_lower"/"_upper" if
+    the corresponding hpd columns exist).
+
+    Example
+    -------
+        df_long = melt_node_errors(tree_metrics_combined,
+                                    metrics=["pop_diff", "bl_rel_error"])
+        plot_single_tree_errors(df_long, sampling="linearconstant", tree_index=54,
+                                 x_col="pop_diff", y_col="bl_rel_error",
+                                 pop_models=["bottleneck"], mutsigs=["high"])
+    """
+    id_cols = [c for c in id_cols if c in df.columns]
+    rows = []
+    for model in models:
+        cols_needed = {c: c for c in id_cols}
+        for met in metrics:
+            for suffix, newname in (("_median", met), ("_hpd_lower", f"{met}_lower"),
+                                     ("_hpd_upper", f"{met}_upper")):
+                col = f"{model}_{met}{suffix}"
+                if col in df.columns:
+                    cols_needed[col] = newname
+        sub = df[list(cols_needed.keys())].rename(columns=cols_needed).copy()
+        sub["model"] = model
+        rows.append(sub)
+    return pd.concat(rows, ignore_index=True)
 
 
 def load_time_bins(eval_dir, bin_width, cutoff):
