@@ -18,6 +18,8 @@ import csv
 import re
 from pathlib import Path
 
+import numpy as np
+
 SAMPLING_TYPES = ["independenthomochronous", "linearconstant"]
 POP_MODELS     = ["expgrowthfast", "expgrowthslow", "uniform", "bottleneck"]
 MUTSIGS        = ["lowmutsig", "medmutsig", "highmutsig"]
@@ -73,17 +75,28 @@ def main():
                     writer.writerow(["replicate", "n_snps"])
                     writer.writerows(counts)
 
-                mean_snps = sum(c for _, c in counts) / len(counts)
+                vals = np.array([c for _, c in counts], dtype=float)
+                mean_snps = float(vals.mean())
+                # sample variance/SD (ddof=1); NaN for a single replicate, where
+                # sample variance is undefined
+                var_snps = float(vals.var(ddof=1)) if len(vals) > 1 else float("nan")
+                std_snps = float(vals.std(ddof=1))  if len(vals) > 1 else float("nan")
+                median_snps = float(np.median(vals))
+                q2_5, q25, q75, q97_5 = np.percentile(vals, [2.5, 25, 75, 97.5])
                 summary_rows.append(
-                    [sampling, popmodel, mutsig, len(counts), mean_snps]
+                    [sampling, popmodel, mutsig, len(counts), mean_snps,
+                     var_snps, std_snps, median_snps,
+                     float(q2_5), float(q25), float(q75), float(q97_5)]
                 )
                 print(f"{sampling}/{popmodel}/{mutsig}: "
-                      f"n={len(counts)} mean_snps={mean_snps:.2f} -> {setting_out}")
+                      f"n={len(counts)} mean_snps={mean_snps:.2f} std={std_snps:.2f} -> {setting_out}")
 
     summary_out = out_dir / "snp_counts_summary.tsv"
     with open(summary_out, "w", newline="") as fh:
         writer = csv.writer(fh, delimiter="\t")
-        writer.writerow(["sampling", "popmodel", "mutsig", "n_replicates", "mean_n_snps"])
+        writer.writerow(["sampling", "popmodel", "mutsig", "n_replicates", "mean_n_snps",
+                          "var_n_snps", "std_n_snps", "median_n_snps",
+                          "q2_5_n_snps", "q25_n_snps", "q75_n_snps", "q97_5_n_snps"])
         writer.writerows(summary_rows)
 
     print(f"\nSummary written to {summary_out}")
