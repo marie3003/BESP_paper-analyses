@@ -103,6 +103,7 @@ def get_true_traj(pop_model, row):
 # Skyline helpers
 # =============================================================================
 
+# each bound is the end time of an interval
 def skyline_boundaries_from_preorder(node_dict, num_groups):
     times       = sorted(h for h, _, is_int, _ in node_dict.values() if is_int)
     base, r     = divmod(len(times), num_groups)
