@@ -82,14 +82,19 @@ def traverse_tree(tree):
 # Population trajectory
 # =============================================================================
 
+# Constant ancestral population size before exponential growth starts
+# (second populationModel of the CompoundPopulationModel in the ReMASTER templates)
+ANCESTRAL_POP_SIZE = 10.0
+
+
 def get_true_traj(pop_model, row):
     if pop_model in ("expgrowthfast", "expgrowthslow"):
         N0, r = float(row["present_pop_size"]), float(row["growth_rate"])
-        return lambda t: N0 * np.exp(-r * t)
+        return lambda t: max(N0 * np.exp(-r * t), ANCESTRAL_POP_SIZE)
     elif pop_model.startswith("bottleneck"):
         N0, Nb = float(row["present_pop_size"]), float(row["bottleneck_size"])
         bs, be = float(row["bottleneck_start"]),  float(row["bottleneck_end"])
-        return lambda t: Nb if bs < t < be else N0
+        return lambda t: Nb if bs < t <= be else N0
     else:
         return lambda t: float(row["present_pop_size"])
 
@@ -119,7 +124,9 @@ def skyline_pop_sizes(log_row, num_groups):
 
 
 def skyline_Ne_at(t, bounds, pop_sizes):
-    idx = max(int(np.searchsorted(bounds, t, side="left")) - 1, 0)
+    # bounds[i] is the end time of interval i, so interval i covers (bounds[i-1], bounds[i]];
+    # times beyond the root fall into the last interval
+    idx = int(np.searchsorted(bounds, t, side="left"))
     return pop_sizes[min(idx, len(pop_sizes) - 1)]
 
 

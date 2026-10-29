@@ -99,14 +99,19 @@ def load_log(path):
 # Population helpers
 # =============================================================================
 
+# Constant ancestral population size before exponential growth starts
+# (second populationModel of the CompoundPopulationModel in the ReMASTER templates)
+ANCESTRAL_POP_SIZE = 10.0
+
+
 def get_true_traj(pop_model, row):
     if pop_model in ("expgrowthfast", "expgrowthslow"):
         N0, r = float(row["present_pop_size"]), float(row["growth_rate"])
-        return lambda t: N0 * np.exp(-r * t)
+        return lambda t: max(N0 * np.exp(-r * t), ANCESTRAL_POP_SIZE)
     elif pop_model.startswith("bottleneck"):
         N0, Nb = float(row["present_pop_size"]), float(row["bottleneck_size"])
         bs, be = float(row["bottleneck_start"]),  float(row["bottleneck_end"])
-        return lambda t: Nb if bs < t < be else N0
+        return lambda t: Nb if bs < t <= be else N0
     else:
         return lambda t: float(row["present_pop_size"])
 
@@ -132,7 +137,9 @@ def skyline_pop_sizes(log_row, num_groups):
 
 
 def skyline_Ne_at(t, bounds, pop_sizes):
-    idx = max(int(np.searchsorted(bounds, t, side="left")) - 1, 0)
+    # bounds[i] is the end time of interval i, so interval i covers (bounds[i-1], bounds[i]];
+    # times beyond the root fall into the last interval
+    idx = int(np.searchsorted(bounds, t, side="left"))
     return pop_sizes[min(idx, len(pop_sizes) - 1)]
 
 
@@ -281,6 +288,19 @@ def main():
     for _, rep_row in scenario_df.iterrows():
         tree_index = int(rep_row["tree_index"])
 
+        # check files exist before accumulating anything, so skipped replicates
+        # don't contribute true values or node/tree counts
+        paths = {}
+        skip = False
+        for model in ("constcoal", "skyline"):
+            tp = rep_row[f"trees_path_{model}"].replace(".combined.trees", f".{args.trees_suffix}.trees")
+            lp = rep_row[f"log_path_{model}"].replace(".combined.log",     f".{args.log_suffix}.log")
+            if not Path(tp).exists() or Path(tp).stat().st_size == 0:
+                skip = True; break
+            paths[model] = (tp, lp)
+        if skip:
+            continue
+
         with open(rep_row["sim_tree_path"]) as fh:
             lines = [l.strip() for l in fh if l.strip()]
         sim_dict  = traverse_tree(Phylo.read(StringIO(lines[tree_index]), "newick"))
@@ -325,18 +345,6 @@ def main():
                 true_acc[key][bin_idx]["bl_sim"].append(bl_sim)
                 true_acc[key][bin_idx]["Ne_true"].append(Ne_true)
                 true_acc[key][bin_idx]["rate_true"].append(1.0 / Ne_true if Ne_true else np.nan)
-
-        # check files exist before streaming
-        paths = {}
-        skip = False
-        for model in ("constcoal", "skyline"):
-            tp = rep_row[f"trees_path_{model}"].replace(".combined.trees", f".{args.trees_suffix}.trees")
-            lp = rep_row[f"log_path_{model}"].replace(".combined.log",     f".{args.log_suffix}.log")
-            if not Path(tp).exists() or Path(tp).stat().st_size == 0:
-                skip = True; break
-            paths[model] = (tp, lp)
-        if skip:
-            continue
 
         for model in ("constcoal", "skyline"):
             tp, lp = paths[model]
